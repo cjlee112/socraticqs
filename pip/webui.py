@@ -192,8 +192,12 @@ class Form(list):
         self.method = method
         self.label = label
         self.kwargs = kwargs
+        self.enctype = None
     def __str__(self):
-        s='<FORM METHOD="%s" ACTION="%s">\n' % (self.method,self.url)
+        s='<FORM METHOD="%s" ACTION="%s"' % (self.method,self.url)
+        if self.enctype:
+            s += ' enctype="%s"' % self.enctype
+        s += '>\n'
         for v in self:
             s+=str(v)
         if self.label is not None:
@@ -202,6 +206,11 @@ class Form(list):
             s += str(Input(k,'hidden',v))
         s += '</FORM>\n\n'
         return s
+    def append(self, v):
+        'automatically sets right encoding if file upload input appended'
+        if isinstance(v, Upload):
+            self.enctype = "multipart/form-data"
+        list.append(self, v)
 
 class Separator(object):
     def __str__(self):
@@ -251,6 +260,13 @@ class Input(Variable):
                 s+='\t<INPUT TYPE="%s" NAME="%s" VALUE="%s"/>%s%s\n' \
                     % (self.type,self.name,k,v,self.separator)
         return s
+
+class Upload(Variable):
+    def __init__(self, name):
+        self.name = name
+
+    def __str__(self):
+        return '<input type="file" name="%s" />' % self.name
 
 class Textarea(Variable):
     def __init__(self, name, value='', cols='80', rows='24', wrap='off'):
