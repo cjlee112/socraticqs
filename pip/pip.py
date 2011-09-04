@@ -27,6 +27,33 @@ class Question(object):
         return 'Thanks for answering! <A HREF="/">Continue</A>'
     answer.exposed = True
 
+class QuestionUpload(object):
+    def __init__(self, title, text, stem='q'):
+        self.stem = stem
+        doc = webui.Document(title)
+        doc.add_text(text)
+        form = webui.Form('answer')
+        doc.add_text('''(write your answer on a sheet of paper, take a picture,
+        and upload the picture using the button below).<br>\n''')
+        form.append(webui.Upload('image'))
+        form.append('<br>\n')
+        doc.append(form)
+        self.doc = doc
+        self.responses = {}
+
+    def __str__(self):
+        return str(self.doc)
+
+    def answer(self, image=None):
+        uid = cherrypy.session['UID']
+        fname = self.stem + str(len(self.responses)) + '_' + image.filename
+        ifile = open(fname, 'w')
+        ifile.write(image.file.read())
+        ifile.close()
+        self.responses[uid] = (fname, image.content_type)
+        return 'Thanks for answering! <A HREF="/">Continue</A>'
+    answer.exposed = True
+
 def redirect(path='/', delay=0):
     s = '<HTML><HEAD>\n'
     s += '<meta http-equiv="Refresh" content="%d; url=%s">\n' % (delay, path)
