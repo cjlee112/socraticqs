@@ -63,12 +63,15 @@ def redirect(path='/', delay=0):
 class PipRoot(object):
     _cp_config = {'tools.sessions.on': True}
 
-    def __init__(self):
+    def __init__(self, enableMathJax=False):
         self._loginHTML = self.login_form()
         self._reloadHTML = redirect()
+        self.enableMathJax = enableMathJax
     
     def serve_question(self, question):
         self._question = question
+        if self.enableMathJax:
+            question.doc.head.append('<script type="text/javascript" src="/MathJax/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>\n')
         self._questionHTML = str(question)
         self.answer = question.answer
         
@@ -108,10 +111,11 @@ class PipRoot(object):
     submit_uid.exposed = True
 
 def test(title='Monty Hall',
-         text='The probability of winning by switching your choice is:',
+         text=r'''The probability of winning by switching your choice is:
+         $$x = {-b \pm \sqrt{b^2-4ac} \over 2a}.$$''',
          choices=('1/3','1/2','2/3', 'Impossible to say')):
     q = Question(title, text, choices)
-    s = PipRoot()
+    s = PipRoot(True)
     s.serve_question(q)
     s.start()
     return s
