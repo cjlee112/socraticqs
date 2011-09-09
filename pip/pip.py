@@ -1,8 +1,129 @@
 import cherrypy
 import webui
 import thread
+import os.path
+import sqlite3
+import csv
+import login
 
-        
+class BadUIDError(ValueError):
+    pass
+
+class BadUsernameError(ValueError):
+    pass
+
+class Student(object):
+    def __init__(self, uid, fullname, username=None):
+        self.uid = uid
+        self.fullname = fullname
+        self.username = username
+
+class CourseDB(object):
+    def __init__(self, dbfile='course.db', createSchema=False):
+        self.dbfile = dbfile
+        if not os.path.exists(dbfile):
+            createSchema = True
+        conn = sqlite3.connect(dbfile)
+        c = conn.cursor()
+        if createSchema:
+            c.execute('''create table students
+            (uid integer primary key,
+            fullname text,
+            username text,
+            date_added integer,
+            added_by text)''')
+            conn.commit()
+        self.make_student_dict(c)
+        c.close()
+        conn.close()
+
+    def make_student_dict(self, c):
+        'build dict from the student db'
+        c.execute('select uid, fullname, username from students')
+        d = {}
+        users = {}
+        for t in c.fetchall():
+            student = Student(*t)
+            d[student.uid] = student
+            if student.username:
+                users[student.username] = student
+        self.students = d
+        self.userdict = users
+
+    def load_student_file(self, path):
+        'read UID,fullname CSV file'
+        ifile = open(path, 'Ub')
+        try:
+            users = csv.reader(ifile)
+            conn = sqlite3.connect(self.dbfile)
+            c = conn.cursor()
+            try:
+                for uid,fullname in users:
+                    c.execute('insert into students values (?,?,NULL,date("now"),"admin")',
+                              (uid, fullname))
+                conn.commit()
+                self.make_student_dict(c)
+            finally:
+                c.close()
+                conn.close()
+        finally:
+            ifile.close()
+
+    def authenticate(self, uid, username):
+        'validate a login'
+        try:
+            if self.userdict[username].uid == uid:
+                return True
+            else:
+                raise BadUIDError('incorrect UID for ' + username)
+        except KeyError:
+            if uid in self.students:
+                raise BadUsernameError('did you mistype your username?')
+            raise BadUsernameError('unknown user ' + username)
+
+    def add_student(self, uid, username, fullname, uid2):
+        'add a login'
+        if uid != uid2:
+            raise BadUIDError('the UIDs do not match!')
+        try:
+            student = self.students[uid]
+        except KeyError: # a new UID
+            return self._new_student(uid, username, fullname)
+        # add username to an existing UID
+        if student.username:
+            return 'You have already registered as user ' + student.username
+        if username in self.userdict:
+            raise BadUsernameError('Username %s is already taken.  Try again.'
+                                   % username)
+        student.username = username
+        self.userdict[username] = student
+        self._execute_and_commit('update students set username=? where uid=?',
+                               (username, uid))
+        return 'Saved username ' + username
+
+    def _new_student(self, uid, username, fullname):
+        if username in self.userdict:
+            raise BadUsernameError('Username %s is already taken.  Try again.'
+                                   % username)
+        self._execute_and_commit('insert into students values (?,?,?,date("now"),"user")',
+                               (uid, username, fullname))
+        student = Student(uid, fullname, username)
+        self.students[uid] = student
+        self.userdict[username] = student
+        return 'Added user ' + username
+
+    def _execute_and_commit(self, sql, args):
+        'execute a change to the db for commiting it later'
+        conn = sqlite3.connect(self.dbfile)
+        c = conn.cursor()
+        try:
+            c.execute(sql, args)
+            conn.commit()
+        finally:
+            c.close()
+            conn.close()
+
+
 class QuestionBase(object):
     def __init__(self, title, text, *args, **kwargs):
         doc = webui.Document(title)
@@ -66,8 +187,13 @@ def redirect(path='/', delay=0):
 class PipRoot(object):
     _cp_config = {'tools.sessions.on': True}
 
-    def __init__(self, enableMathJax=False):
-        self._loginHTML = self.login_form()
+    def __init__(self, enableMathJax=False, registerAll=False, **kwargs):
+        self.courseDB = CourseDB(**kwargs)
+        self._registerHTML = login.register_form()
+        if registerAll:
+            self._loginHTML = self._registerHTML
+        else:
+            self._loginHTML = login.login_form()
         self._reloadHTML = redirect()
         self.enableMathJax = enableMathJax
     
@@ -96,23 +222,41 @@ class PipRoot(object):
     def serve_forever(self):
         cherrypy.quickstart(self, '/', 'cp.conf')
 
-    def login_form(self):
-        doc = webui.Document('Login')
-        doc.add_text('Please enter your UCLA ID:')
-        doc.append('<br>\n')
-        form = webui.Form('submit_uid')
-        form.append(webui.Data('UID:'))
-        form.append(webui.Input('uid', size=10))
-        doc.append(form)
-        return str(doc)
-
-    def submit_uid(self, uid=None):
-        if not uid:
-            pass
+    def login(self, username, uid):
+        try:
+            uid = int(uid)
+        except ValueError:
+            return 'Your UID must be an integer! <A HREF="/">Continue</A>'
+        try:
+            self.courseDB.authenticate(uid, username)
+        except ValueError, e:
+            return str(e) + ' <A HREF="/">Continue</A>'
         cherrypy.session['UID'] = uid
+        cherrypy.session['username'] = username
         return self._reloadHTML
-    submit_uid.exposed = True
+    login.exposed = True
 
+    def register_form(self):
+        return self._registerHTML
+    register_form.exposed = True
+
+    def register(self, username, fullname, uid, uid2):
+        try:
+            uid = int(uid)
+            uid2 = int(uid2)
+        except ValueError:
+            return 'Your UID must be an integer! <A HREF="/register_form">Continue</A>'
+        if not username:
+            return 'You must supply a username! <A HREF="/register_form">Continue</A>'
+        try:
+            msg = self.courseDB.add_student(uid, username, fullname, uid2)
+        except ValueError, e:
+            return str(e) + ' <A HREF="/register_form">Continue</A>'
+        cherrypy.session['UID'] = uid
+        cherrypy.session['username'] = username
+        return msg + '. <A HREF="/">Continue</A>'
+    register.exposed = True
+        
 def test(title='Monty Hall',
          text=r'''The probability of winning by switching your choice is:
          $$x = {-b \pm \sqrt{b^2-4ac} \over 2a}.$$''',
