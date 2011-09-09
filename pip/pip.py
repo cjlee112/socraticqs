@@ -2,22 +2,29 @@ import cherrypy
 import webui
 import thread
 
-class Question(object):
-    def __init__(self, title, text, choices):
+        
+class QuestionBase(object):
+    def __init__(self, title, text, *args, **kwargs):
         doc = webui.Document(title)
+        self.doc = doc
         doc.add_text(text)
+        doc.append(self.build_form(*args, **kwargs))
+        self.responses = {}
+
+    def __str__(self):
+        return str(self.doc)
+
+class QuestionChoice(QuestionBase):
+    def build_form(self, choices):
+        'ask the user to choose and option and enter a short text reason'
+        self.choices = choices
         form = webui.Form('answer')
         form.append(webui.Selection('choice', list(enumerate(choices))))
         form.append('<br>\n')
         form.append(webui.Data('Explain:'))
         form.append(webui.Input('reason', size=50))
         form.append('<br>\n')
-        doc.append(form)
-        self.doc = doc
-        self.responses = {}
-
-    def __str__(self):
-        return str(self.doc)
+        return form
 
     def answer(self, choice=None, reason=None):
         uid = cherrypy.session['UID']
@@ -27,24 +34,20 @@ class Question(object):
         return 'Thanks for answering! <A HREF="/">Continue</A>'
     answer.exposed = True
 
-class QuestionUpload(object):
-    def __init__(self, title, text, stem='q'):
+
+class QuestionUpload(QuestionBase):
+    def build_form(stem='q', instructions='''(write your answer on a sheet of paper, take a picture,
+        and upload the picture using the button below).<br>\n'''):
+        'ask the user to upload an image file'
         self.stem = stem
-        doc = webui.Document(title)
-        doc.add_text(text)
+        self.doc.append(webui.Data(instructions))
         form = webui.Form('answer')
-        doc.add_text('''(write your answer on a sheet of paper, take a picture,
-        and upload the picture using the button below).<br>\n''')
         form.append(webui.Upload('image'))
         form.append('<br>\n')
-        doc.append(form)
-        self.doc = doc
-        self.responses = {}
-
-    def __str__(self):
-        return str(self.doc)
+        return form
 
     def answer(self, image=None):
+        'receive uploaded image file from user'
         uid = cherrypy.session['UID']
         fname = self.stem + str(len(self.responses)) + '_' + image.filename
         ifile = open(fname, 'w')
@@ -114,7 +117,7 @@ def test(title='Monty Hall',
          text=r'''The probability of winning by switching your choice is:
          $$x = {-b \pm \sqrt{b^2-4ac} \over 2a}.$$''',
          choices=('1/3','1/2','2/3', 'Impossible to say')):
-    q = Question(title, text, choices)
+    q = QuestionChoice(title, text, choices)
     s = PipRoot(True)
     s.serve_question(q)
     s.start()
