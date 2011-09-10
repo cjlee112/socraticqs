@@ -5,6 +5,7 @@ import os.path
 import sqlite3
 import csv
 import login
+import time
 
 class BadUIDError(ValueError):
     pass
@@ -123,6 +124,53 @@ class CourseDB(object):
             c.close()
             conn.close()
 
+letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+
+
+class Response(object):
+    'subclass this to supply different storage and representation methods'
+    def __init__(self, uid, question, *args, **kwargs):
+        self.uid = uid
+        self.question = question
+        self.timestamp = time.time()
+        self.save_data(*args, **kwargs)
+
+    def save_data(self, **kwargs):
+        for attr, val in kwargs.items():
+            setattr(self, attr, val)
+
+class MultiChoiceResponse(Response):
+    def save_data(self, choice):
+        self.choice = int(choice)
+    def __str__(self):
+        return '<B>%s</B>:%s<br>\n' % (letters[self.choice], self.reason)
+    def __cmp__(self, other):
+        return cmp(self.choice, other.choice)
+    def __hash__(self):
+        return hash(self.choice)
+
+class ClusteredResponse(Response):
+    'a pair matches if they have the same prototype'
+    def __cmp__(self, other):
+        return cmp(id(self.prototype), id(other.prototype))
+    def __hash__(self):
+        try:
+            return id(self.prototype)
+        except AttributeError:
+            return id(self)
+
+class TextResponse(ClusteredResponse):
+    def save_data(self, text):
+        self.text = text
+    def __str__(self):
+        return self.text + '<br><hr>\n'
+
+class ImageResponse(ClusteredResponse):
+    def save_data(self, stem, image):
+        self.fname = stem + '_' + image.filename
+        ifile = open(self.fname, 'w')
+        ifile.write(image.file.read())
+        ifile.close()
 
 class QuestionBase(object):
     def __init__(self, title, text, *args, **kwargs):
@@ -131,27 +179,35 @@ class QuestionBase(object):
         doc.add_text(text)
         doc.append(self.build_form(*args, **kwargs))
         self.responses = {}
+        self.categories = {}
+        self.unclustered = set()
 
     def __str__(self):
         return str(self.doc)
 
 class QuestionChoice(QuestionBase):
     def build_form(self, choices):
-        'ask the user to choose and option and enter a short text reason'
+        'ask the user to choose an option and enter a short text reason'
         self.choices = choices
         form = webui.Form('answer')
-        form.append(webui.Selection('choice', list(enumerate(choices))))
+        l = []
+        for i,s in enumerate(choices):
+            l.append((i, '<B>%s</B>. %s' % (letters[i], s)))
+        form.append(webui.RadioSelection('choice', l))
         form.append('<br>\n')
-        form.append(webui.Data('Explain:'))
-        form.append(webui.Input('reason', size=50))
-        form.append('<br>\n')
+        ## form.append(webui.Data('Explain:'))
+        ## form.append(webui.Input('reason', size=50))
+        ## form.append('<br>\n')
         return form
 
-    def answer(self, choice=None, reason=None):
+    def answer(self, choice):
         uid = cherrypy.session['UID']
-        if not choice or not reason:
-            pass
-        self.responses[uid] = (choice, reason)
+        response = MultiChoiceResponse(uid, self, choice)
+        try: # append to its matching category
+            self.categories[response].append(response)
+        except KeyError: # add this as a new category
+            self.categories[response] = [response]
+        self.responses[uid] = response
         return 'Thanks for answering! <A HREF="/">Continue</A>'
     answer.exposed = True
 
@@ -170,11 +226,9 @@ class QuestionUpload(QuestionBase):
     def answer(self, image=None):
         'receive uploaded image file from user'
         uid = cherrypy.session['UID']
-        fname = self.stem + str(len(self.responses)) + '_' + image.filename
-        ifile = open(fname, 'w')
-        ifile.write(image.file.read())
-        ifile.close()
-        self.responses[uid] = (fname, image.content_type)
+        response = ImageResponse(uid, self, self.stem + str(len(self.responses)),
+                                 image)
+        self.responses[uid] = response
         return 'Thanks for answering! <A HREF="/">Continue</A>'
     answer.exposed = True
 
