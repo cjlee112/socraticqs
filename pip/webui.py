@@ -304,3 +304,16 @@ class Selection(Variable):
                 s+='\t\t<OPTION VALUE="%s">%s</OPTION>\n' % (k,v)
         s+='\t</SELECT>\n'
         return s
+
+class RadioSelection(Selection):
+    def __str__(self):
+        s = ''
+        for k,v in self.value:
+            if k == self.selected:
+                s += '\t\t<INPUT TYPE="radio" NAME="%s" VALUE="%s" CHECKED>%s<BR>\n' \
+                    % (self.name, k, v)
+            else:
+                s += '\t\t<INPUT TYPE="radio" NAME="%s" VALUE="%s">%s<BR>\n' \
+                    % (self.name, k, v)
+        return s
+    
