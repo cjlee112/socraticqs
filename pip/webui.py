@@ -306,14 +306,17 @@ class Selection(Variable):
         return s
 
 class RadioSelection(Selection):
+    _type = 'radio'
     def __str__(self):
         s = ''
         for k,v in self.value:
             if k == self.selected:
-                s += '\t\t<INPUT TYPE="radio" NAME="%s" VALUE="%s" CHECKED>%s<BR>\n' \
-                    % (self.name, k, v)
+                s += '\t\t<INPUT TYPE="%s" NAME="%s" VALUE="%s" CHECKED>%s<BR>\n' \
+                    % (self._type, self.name, k, v)
             else:
-                s += '\t\t<INPUT TYPE="radio" NAME="%s" VALUE="%s">%s<BR>\n' \
-                    % (self.name, k, v)
+                s += '\t\t<INPUT TYPE="%s" NAME="%s" VALUE="%s">%s<BR>\n' \
+                    % (self._type, self.name, k, v)
         return s
     
+class CheckboxSelection(RadioSelection):
+    _type = 'checkbox'
