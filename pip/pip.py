@@ -194,9 +194,9 @@ class QuestionBase(object):
             try:
                 partnerUID = self.courseDB.userdict[partner].uid
             except KeyError:
-                return """Sorry, the username you entered for your partner
+                raise BadUsernameError("""Sorry, the username you entered for your partner
                 does not exist.  Please re-enter it!
-                <A HREF='/reconsider_form'>Continue</A>."""
+                <A HREF='/reconsider_form'>Continue</A>.""")
             response.response2 = self.responses[partnerUID]
         response.reasons = reasons
         response.confidence2 = confidence
@@ -252,7 +252,8 @@ class QuestionBase(object):
         response = self.responses[uid]
         if response in self.categories:
             return '''Your answer already matches a category.
-            <A HREF="/">Continue</A>'''
+            When your instructor asks you to, please click here to
+            continue to the <A HREF="/vote_form">final vote</A>.'''
         return self._clusterFormHTML
     cluster_form.exposed = True
 
