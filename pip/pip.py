@@ -201,6 +201,16 @@ class QuestionBase(object):
         response.reasons = reasons
         response.confidence2 = confidence
 
+    def reconsider(self, reasons, status, confidence, partner):
+        try:
+            self.save_reasons(reasons, status, confidence, partner)
+        except BadUsernameError, e:
+            return str(e)
+        return '''Thanks! When your instructor asks you to, please click here to
+            continue to <A HREF="%s">%s</A>.''' % (self._afterURL,
+                                                   self._afterText)
+    reconsider.exposed = True
+
     def prototype_form(self, offset=0, maxview=10,
                        title='Categorize Responses'):
         if not self.unclustered:
@@ -222,20 +232,26 @@ class QuestionBase(object):
         return str(doc)
     prototype_form.exposed = True
     def cluster_report(self):
+        self.init_vote()
         s = '<h1>Done</h1>%d responses in %d categories:' \
             % (len(self.responses), len(self.categories))
         return s
 
     def add_prototypes(self, **kwargs):
+        n = 0
         for k,v in kwargs.items():
             if v == 'add':
                 uid = int(k.split('_')[1])
                 response = self.responses[uid]
                 self.set_prototype(response)
+                n += 1
         l = list(self.categories)
         l.sort()
         self.categoriesSorted = l
         self._clusterFormHTML = self.build_cluster_form()
+        return '''Added %d categories.  Tell the students to categorize
+        themselves vs. your new categories.  When they are done,
+        click here to <A HREF="/prototype_form">continue</A>.''' % n
     add_prototypes.exposed = True
 
     def set_prototype(self, response, category=None):
@@ -310,6 +326,7 @@ class QuestionBase(object):
         if confidenceChoice:
             add_confidence_choice(form)
         form.append('<br>\n')
+        return form
     def build_critique_form(self):
         form = self.get_choice_form('critique', False)
         form.append('<br>\nBriefly state what you think is wrong with this answer:<br>\n')
@@ -345,11 +362,11 @@ class QuestionBase(object):
 
     def critique(self, criticisms, choice):
         category = self.categoriesSorted[int(choice)]
-        self.save_critique(criticisms, category)
+        return self.save_critique(criticisms, category)
     critique.exposed = True
     
     def self_critique(self, criticisms):
-        self.save_critique(criticisms)
+        return self.save_critique(criticisms)
     self_critique.exposed = True
     
     def save_critique(self, criticisms, category=None):
@@ -391,16 +408,35 @@ class QuestionChoice(QuestionBase):
         return '''Thanks for answering! When your instructor asks you to, please click here to
         <A HREF="/reconsider_form">continue</A>.'''
     answer.exposed = True
-        
-    def reconsider(self, reasons, status, confidence, partner):
-        try:
-            self.save_reasons(reasons, status, confidence, partner)
-        except BadUsernameError, e:
-            return str(e)
-        return '''Thanks! When your instructor asks you to, please click here to
-            continue to the <A HREF="/vote_form">final vote</A>.'''
-    reconsider.exposed = True
 
+    _afterURL = '/vote_form'
+    _afterText = 'the final vote'
+        
+class QuestionText(QuestionBase):
+    def build_form(self, instructions=r'''(Briefly state your answer to the question
+    in the box below.  You may enter latex equations by enclosing them in
+    pairs of dollar signs, e.g. \$\$c^2=a^2+b^2\$\$).<br>
+    '''):
+        'ask the user to enter a text answer'
+        self.doc.append(webui.Data(instructions))
+        form = webui.Form('answer')
+        form.append(webui.Textarea('answer'))
+        add_confidence_choice(form)
+        form.append('<br>\n')
+        return form
+
+    def answer(self, answer, confidence):
+        'receive text answer from user'
+        uid = cherrypy.session['UID']
+        response = TextResponse(uid, self, confidence, answer)
+        self.unclustered.add(response) # initially not categorized
+        self.responses[uid] = response
+        return '''Thanks for answering!  When your instructor asks you to, please click here to
+        <A HREF="/reconsider_form">continue</A>.'''
+    answer.exposed = True
+
+    _afterURL = '/cluster_form'
+    _afterText = 'categorize your answer'
 
 class QuestionUpload(QuestionBase):
     def build_form(stem='q', instructions='''(write your answer on a sheet of paper, take a picture,
@@ -426,14 +462,9 @@ class QuestionUpload(QuestionBase):
         <A HREF="/reconsider_form">continue</A>.'''
     answer.exposed = True
 
-    def reconsider(self, reasons, status, confidence, partner):
-        try:
-            self.save_reasons(reasons, status, confidence, partner)
-        except BadUsernameError, e:
-            return str(e)
-        return '''Thanks! When your instructor asks you to, please click here to
-            continue to <A HREF="/cluster_form">categorize your answer</A>.'''
-    reconsider.exposed = True
+    _afterURL = '/cluster_form'
+    _afterText = 'categorize your answer'
+    
 
 def add_confidence_choice(form, levels=('Just guessing', 'Not quite sure',
                                         'Pretty sure')):
@@ -483,16 +514,25 @@ class PipRoot(object):
         self._reloadHTML = redirect()
         self._reconsiderHTML = build_reconsider_form()
         self.enableMathJax = enableMathJax
+        if enableMathJax:
+            webui.Document._defaultHeader = '''<script type="text/x-mathjax-config">
+              MathJax.Hub.Config({
+                tex2jax: {
+                  processEscapes: true
+                }
+              });
+            </script>
+            <script type="text/javascript" src="/MathJax/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+            '''
     
     def serve_question(self, question):
         self.question = question
         question.courseDB = self.courseDB
-        if self.enableMathJax:
-            question.doc.head.append('<script type="text/javascript" src="/MathJax/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>\n')
         self._questionHTML = str(question)
         self.answer = question.answer
         self.reconsider = question.reconsider
         self.prototype_form = question.prototype_form
+        self.add_prototypes = question.add_prototypes
         self.cluster_form = question.cluster_form
         self.vote = question.vote
         self.critique = question.critique
@@ -562,8 +602,11 @@ class PipRoot(object):
 def test(title='Monty Hall',
          text=r'''The probability of winning by switching your choice is:
          $$x = {-b \pm \sqrt{b^2-4ac} \over 2a}.$$''',
-         choices=('1/3','1/2','2/3', 'Impossible to say')):
-    q = QuestionChoice(title, text, choices)
+         choices=('1/3','1/2','2/3', 'Impossible to say'), tryText=True):
+    if tryText:
+        q = QuestionText('monty hall', text)
+    else:
+        q = QuestionChoice(title, text, choices)
     s = PipRoot(True)
     s.serve_question(q)
     s.start()
