@@ -165,7 +165,7 @@ class TextResponse(ClusteredResponse):
     def save_data(self, text):
         self.text = text
     def __str__(self):
-        return self.text + '<br><hr>\n'
+        return self.text + '<br>\n'
 
 class ImageResponse(ClusteredResponse):
     def save_data(self, stem, image):
@@ -187,7 +187,7 @@ class QuestionBase(object):
     def __str__(self):
         return str(self.doc)
 
-    def reconsider(self, reasons, status, confidence, partner):
+    def save_reasons(self, reasons, status, confidence, partner):
         uid = cherrypy.session['UID']
         response = self.responses[uid]
         if status == 'switched':
@@ -200,8 +200,6 @@ class QuestionBase(object):
             response.response2 = self.responses[partnerUID]
         response.reasons = reasons
         response.confidence2 = confidence
-        return 'Thanks! <A HREF="/">Continue</A>.'
-    reconsider.exposed = True
 
     def prototype_form(self, offset=0, maxview=10,
                        title='Categorize Responses'):
@@ -277,11 +275,13 @@ class QuestionBase(object):
         uid = cherrypy.session['UID']
         if match == 'none':
             return '''OK.  Hopefully we can cluster your answer in the next
-            round.  <A HREF="/">Continue</A>.'''
+            round.  When your instructor asks you to, please click here to
+            continue to the <A HREF="/cluster_form">next clustering round</A>.'''
         response = self.responses[uid]
         category = self.categoriesSorted[int(match)]
         self.set_prototype(response, category)
-        return 'Thanks! <A HREF="/">Continue</A>.'
+        return '''Thanks! When your instructor asks you to, please click here to
+            continue to the <A HREF="/vote_form">final vote</A>.'''
     cluster.exposed = True
 
     def build_vote_form(self, form=None, title='Vote for the best answer',
@@ -292,15 +292,25 @@ class QuestionBase(object):
             form = self.get_choice_form()
         doc.append(form)
         return str(doc)
-    def get_choice_form(self, action='vote'):
+    def get_choice_form(self, action='vote', confidenceChoice=True,
+                        maxreasons=2):
         form = webui.Form(action)
         l = []
-        for i,r in enumerate(self.categoriesSorted):
+        for i,category in enumerate(self.categoriesSorted):
+            s = str(category)
+            if maxreasons:
+                responses = self.categories[category][:maxreasons]
+                s += '<h3>Some arguments for this:</h3>\n'
+                for r in responses:
+                    s += '<LI>%s</LI>\n' % r.reasons
+                s += '<hr>\n'
             l.append((i, str(r)))
         form.append(webui.RadioSelection('choice', l))
+        if confidenceChoice:
+            add_confidence_choice(form)
         form.append('<br>\n')
     def build_critique_form(self):
-        form = self.get_choice_form('critique')
+        form = self.get_choice_form('critique', False)
         form.append('<br>\nBriefly state what you think is wrong with this answer:<br>\n')
         form.append(webui.Textarea('criticisms'))
         form.append('<br>\n')
@@ -320,11 +330,12 @@ class QuestionBase(object):
         doc.append(form)
         self._selfCritiqueHTML = str(doc)
         
-    def vote(self, choice):
+    def vote(self, choice, confidence):
         uid = cherrypy.session['UID']
         response = self.responses[uid]
         category = self.categoriesSorted[int(choice)]
         response.finalVote = category
+        response.finalConfidence = confidence
         if category != response:
             return self._selfCritiqueHTML
         else:
@@ -347,13 +358,14 @@ class QuestionBase(object):
             category = response
         response.critiqueTarget = category
         response.criticisms = criticisms
-        return 'Thanks! <A HREF="/">Continue</A>'
+        return '''Thanks! When your instructor asks you to, please click here to
+        <A HREF="/">continue</A>.'''
 
 
 
 class QuestionChoice(QuestionBase):
     def build_form(self, choices):
-        'ask the user to choose an option and enter a short text reason'
+        'ask the user to choose an option'
         self.choices = choices
         form = webui.Form('answer')
         l = []
@@ -375,9 +387,18 @@ class QuestionChoice(QuestionBase):
         except KeyError: # add this as a new category
             self.categories[response] = [response]
         self.responses[uid] = response
-        return 'Thanks for answering! <A HREF="/">Continue</A>'
+        return '''Thanks for answering! When your instructor asks you to, please click here to
+        <A HREF="/reconsider_form">continue</A>.'''
     answer.exposed = True
         
+    def reconsider(self, reasons, status, confidence, partner):
+        try:
+            self.save_reasons(reasons, status, confidence, partner)
+        except BadUsernameError, e:
+            return str(e)
+        return '''Thanks! When your instructor asks you to, please click here to
+            continue to the <A HREF="/vote_form">final vote</A>.'''
+    reconsider.exposed = True
 
 
 class QuestionUpload(QuestionBase):
@@ -400,8 +421,18 @@ class QuestionUpload(QuestionBase):
                                  image)
         self.unclustered.add(response) # initially not categorized
         self.responses[uid] = response
-        return 'Thanks for answering! <A HREF="/">Continue</A>'
+        return '''Thanks for answering!  When your instructor asks you to, please click here to
+        <A HREF="/reconsider_form">continue</A>.'''
     answer.exposed = True
+
+    def reconsider(self, reasons, status, confidence, partner):
+        try:
+            self.save_reasons(reasons, status, confidence, partner)
+        except BadUsernameError, e:
+            return str(e)
+        return '''Thanks! When your instructor asks you to, please click here to
+            continue to <A HREF="/cluster_form">categorize your answer</A>.'''
+    reconsider.exposed = True
 
 def add_confidence_choice(form, levels=('Just guessing', 'Not quite sure',
                                         'Pretty sure')):
@@ -409,10 +440,13 @@ def add_confidence_choice(form, levels=('Just guessing', 'Not quite sure',
     form.append(webui.RadioSelection('confidence', list(enumerate(levels))))
     
 
-def redirect(path='/', delay=0):
+def redirect(path='/', body=None, delay=0):
     s = '<HTML><HEAD>\n'
     s += '<meta http-equiv="Refresh" content="%d; url=%s">\n' % (delay, path)
-    s += '</HEAD></HTML>\n'
+    s += '</HEAD>\n'
+    if body:
+        s += '<BODY>%s</BODY>\n' % body
+    s += '</HTML>\n'
     return s
 
 def build_reconsider_form(title='Reconsidering your answer'):
@@ -450,13 +484,18 @@ class PipRoot(object):
         self.enableMathJax = enableMathJax
     
     def serve_question(self, question):
-        self._question = question
+        self.question = question
         question.courseDB = self.courseDB
         if self.enableMathJax:
             question.doc.head.append('<script type="text/javascript" src="/MathJax/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>\n')
         self._questionHTML = str(question)
         self.answer = question.answer
+        self.reconsider = question.reconsider
         self.prototype_form = question.prototype_form
+        self.cluster_form = question.cluster_form
+        self.vote = question.vote
+        self.critique = question.critique
+        self.self_critique = question.self_critique
         
     def index(self):
         try:
@@ -510,6 +549,14 @@ class PipRoot(object):
         cherrypy.session['username'] = username
         return msg + '. <A HREF="/">Continue</A>'
     register.exposed = True
+
+    def reconsider_form(self):
+        return self._reconsiderHTML
+    reconsider_form.exposed = True
+
+    def vote_form(self):
+        return self.question._voteHTML
+    vote_form.exposed = True
         
 def test(title='Monty Hall',
          text=r'''The probability of winning by switching your choice is:
