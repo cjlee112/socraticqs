@@ -47,6 +47,10 @@ class Document(Data):
     format='HTML'
     def __init__(self,title):
         head=Head([Title([title])])
+        try:
+            head.append(self._defaultHeader)
+        except AttributeError:
+            pass
         list.__init__(self,[head,Body()])
         self.head=head
         self.methods={}
