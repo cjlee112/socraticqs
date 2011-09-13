@@ -260,13 +260,10 @@ class TextResponse(ClusteredResponse):
         return self.text + '<br>\n'
 
 class ImageResponse(ClusteredResponse):
-    def save_data(self, stem, image):
-        self.fname = stem + '_' + image.filename
-        ifile = open(self.fname, 'wb')
-        ifile.write(image.file.read())
-        ifile.close()
-    def get_answer(self):
-        ifile = open(self.fname, 'rb')
+    def save_data(self, path):
+        self.path = path
+    def get_answer(self): ## must fix this !!!!
+        ifile = open(self.path, 'rb')
         data = ifile.read()
         ifile.close()
         return data
@@ -331,13 +328,17 @@ class QuestionBase(object):
 
     def cluster_report(self):
         self.init_vote()
-        s = '<h1>Done</h1>%d responses in %d categories:' \
-            % (len(self.responses), len(self.categories))
-        for category in self.categoriesSorted:
-            s += '<h3>%d students chose:</h3>\n' \
-                 % len(self.categories[category])
-            s += str(category)
-        return s
+        doc = webui.Document('Clustering Complete')
+        doc.add_text('Done: %d responses in %d categories:'
+                     % (len(self.responses), len(self.categories)), 'h1')
+        doc.add_text('Choose which answer is correct:')
+        doc.append(self.get_choice_form('correct', False, 0,
+                                        '''%(answer)s<br>
+                                        <b>(%(tag)s answer chosen by %(n)d students)</b><br>
+                                        '''))
+        doc.add_text('''<br>If none of these are correct, click here
+        to add the <A HREF="/add_correct">correct answer</A>.''')
+        return str(doc)
 
     def add_prototypes(self, **kwargs):
         n = 0
@@ -374,7 +375,7 @@ class QuestionBase(object):
         self.unclustered.remove(response)
 
     def is_correct(self, response):
-        return response.prototype == self.correctChoice
+        return response == self.correctAnswer
 
     def cluster_form(self):
         uid = cherrypy.session['UID']
@@ -423,17 +424,26 @@ class QuestionBase(object):
         doc.append(form)
         return str(doc)
     def get_choice_form(self, action='vote', confidenceChoice=True,
-                        maxreasons=2):
+                        maxreasons=2, fmt='%(answer)s', separator='<hr>\n'):
         form = webui.Form(action)
         l = []
         for i,category in enumerate(self.list_categories()):
-            s = str(category)
-            if maxreasons:
-                responses = self.categories[category][:maxreasons]
+            responses = self.categories.get(category, ())
+            try:
+                if self.is_correct(category):
+                    tag = 'correct'
+                else:
+                    tag = 'wrong'
+            except AttributeError: # correct answer not yet categorized
+                tag = ''
+            d = dict(n=len(responses), tag=tag, answer=str(category))
+            s = fmt % d
+            if maxreasons and responses:
                 s += '<h3>Some arguments for this:</h3>\n'
-                for r in responses:
+                for r in responses[:maxreasons]:
                     s += '<LI>%s</LI>\n' % r.reasons
-                s += '<hr>\n'
+                separator = '<hr>\n'
+            s += separator
             l.append((i, s))
         form.append(webui.RadioSelection('choice', l))
         if confidenceChoice:
@@ -497,7 +507,7 @@ class QuestionBase(object):
 class QuestionChoice(QuestionBase):
     def build_form(self, correctChoice, choices):
         'ask the user to choose an option'
-        self.correctChoice = int(correctChoice)
+        self.correctAnswer = MultiChoiceResponse(0, self, 0, int(correctChoice))
         self.choices = choices
         form = webui.Form('answer')
         l = []
@@ -506,9 +516,6 @@ class QuestionChoice(QuestionBase):
         form.append(webui.RadioSelection('choice', l))
         add_confidence_choice(form)
         form.append('<br>\n')
-        ## form.append(webui.Data('Explain:'))
-        ## form.append(webui.Input('reason', size=50))
-        ## form.append('<br>\n')
         return form
 
     def answer(self, choice, confidence):
@@ -526,9 +533,6 @@ class QuestionChoice(QuestionBase):
         return '''Thanks for answering! When your instructor asks you to, please click here to
         <A HREF="/reconsider_form">continue</A>.'''
     answer.exposed = True
-
-    def is_correct(self, response):
-        return response.choice == self.correctChoice
 
     _afterURL = '/vote_form'
     _afterText = 'the final vote'
@@ -574,9 +578,11 @@ class QuestionUpload(QuestionBase):
     def answer(self, image, confidence):
         'receive uploaded image file from user'
         uid = cherrypy.session['UID']
-        response = ImageResponse(uid, self, confidence,
-                                 self.stem + str(len(self.responses)),
-                                 image)
+        fname = self.stem + str(len(self.responses)) + '_' + image.filename
+        ifile = open(fname, 'wb')
+        ifile.write(image.file.read())
+        ifile.close()
+        response = ImageResponse(uid, self, confidence, fname)
         self.unclustered.add(response) # initially not categorized
         self.responses[uid] = response
         return '''Thanks for answering!  When your instructor asks you to, please click here to
