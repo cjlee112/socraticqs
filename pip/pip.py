@@ -284,27 +284,26 @@ class QuestionBase(object):
     def __str__(self):
         return str(self.doc)
 
-    def save_reasons(self, reasons, status, confidence, partner):
+    def reconsider(self, reasons, status, confidence, partner):
         uid = cherrypy.session['UID']
         response = self.responses[uid]
         if status == 'switched':
             try:
-                partnerUID = self.courseDB.userdict[partner].uid
+                partnerUID = self.courseDB.userdict[partner.lower()].uid
             except KeyError:
-                raise BadUsernameError("""Sorry, the username you entered for your partner
-                does not exist.  Please re-enter it!
-                <A HREF='/reconsider_form'>Continue</A>.""")
-            response.response2 = self.responses[partnerUID]
+                return """Sorry, the username you entered for your partner
+                does not exist.  Please click your browser's back button
+                to re-enter it!"""
+            try:
+                response.response2 = self.responses[partnerUID]
+            except KeyError:
+                return """Sorry, that username does not appear to
+                have entered an answer!  Tell them to enter their answer, then
+                click your browser's back button to resubmit your form."""
         else:
             response.response2 = None
         response.reasons = reasons
         response.confidence2 = confidence
-
-    def reconsider(self, reasons, status, confidence, partner):
-        try:
-            self.save_reasons(reasons, status, confidence, partner)
-        except BadUsernameError, e:
-            return str(e)
         return '''Thanks! When your instructor asks you to, please click here to
             continue to <A HREF="%s">%s</A>.''' % (self._afterURL,
                                                    self._afterText)
@@ -334,6 +333,10 @@ class QuestionBase(object):
         self.init_vote()
         s = '<h1>Done</h1>%d responses in %d categories:' \
             % (len(self.responses), len(self.categories))
+        for category in self.categoriesSorted:
+            s += '<h3>%d students chose:</h3>\n' \
+                 % len(self.categories[category])
+            s += str(category)
         return s
 
     def add_prototypes(self, **kwargs):
@@ -344,13 +347,22 @@ class QuestionBase(object):
                 response = self.responses[uid]
                 self.set_prototype(response)
                 n += 1
-        l = list(self.categories)
-        l.sort()
-        self.categoriesSorted = l
+        self.categoriesSorted = None # force this to update
         self._clusterFormHTML = self.build_cluster_form()
         return '''Added %d categories.  Tell the students to categorize
         themselves vs. your new categories.  When they are done,
         click here to <A HREF="/prototype_form">continue</A>.''' % n
+
+    def list_categories(self):
+        try:
+            if self.categoriesSorted: # no need for update
+                return self.categoriesSorted
+        except AttributeError: # must create this list
+            pass
+        l = list(self.categories)
+        l.sort()
+        self.categoriesSorted = l
+        return self.categoriesSorted
 
     def set_prototype(self, response, category=None):
         if category is None: # response is prototype for its own category
@@ -381,7 +393,7 @@ class QuestionBase(object):
         ''')
         form = webui.Form('cluster')
         l = []
-        for i,r in enumerate(self.categoriesSorted):
+        for i,r in enumerate(self.list_categories()):
             l.append((i, str(r)))
         l.append(('none', 'None of the above'))
         form.append(webui.RadioSelection('match', l))
@@ -414,7 +426,7 @@ class QuestionBase(object):
                         maxreasons=2):
         form = webui.Form(action)
         l = []
-        for i,category in enumerate(self.categoriesSorted):
+        for i,category in enumerate(self.list_categories()):
             s = str(category)
             if maxreasons:
                 responses = self.categories[category][:maxreasons]
@@ -602,9 +614,9 @@ def build_reconsider_form(title='Reconsidering your answer'):
     form = webui.Form('reconsider')
     form.append(webui.Textarea('reasons'))
     form.append('<br>\n')
-    l = dict(unchanged='I still prefer my original answer.',
+    d = dict(unchanged='I still prefer my original answer.',
              switched="I've decided my partner's answer is better (enter his/her name below).")
-    form.append(webui.RadioSelection('status', list(enumerate(l))))
+    form.append(webui.RadioSelection('status', d.items()))
     add_confidence_choice(form)
     form.append("<br>\nYour partner's username:")
     form.append(webui.Input('partner'))
@@ -672,6 +684,7 @@ class PipRoot(object):
         cherrypy.quickstart(self, '/', 'cp.conf')
 
     def login(self, username, uid):
+        username = username.lower()
         try:
             uid = int(uid)
         except ValueError:
@@ -690,6 +703,7 @@ class PipRoot(object):
     register_form.exposed = True
 
     def register(self, username, fullname, uid, uid2):
+        username = username.lower()
         try:
             uid = int(uid)
             uid2 = int(uid2)
@@ -711,7 +725,12 @@ class PipRoot(object):
     reconsider_form.exposed = True
 
     def vote_form(self):
-        return self.question._voteHTML
+        try:
+            return self.question._voteHTML
+        except AttributeError:
+            return '''Sorry, not all answers have been categorized yet.
+            Please wait until your instructor asks you to click here
+            to <A HREF="/vote_form">continue</A>.'''
     vote_form.exposed = True
 
     # admin interfaces
