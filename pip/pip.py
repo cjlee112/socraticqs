@@ -422,7 +422,7 @@ class QuestionBase(object):
                 for r in responses:
                     s += '<LI>%s</LI>\n' % r.reasons
                 s += '<hr>\n'
-            l.append((i, str(r)))
+            l.append((i, s))
         form.append(webui.RadioSelection('choice', l))
         if confidenceChoice:
             add_confidence_choice(form)
@@ -639,6 +639,8 @@ class PipRoot(object):
             self._loginHTML = login.login_form()
         self._reloadHTML = redirect()
         self._reconsiderHTML = build_reconsider_form()
+        if questionFile:
+            self.serve_question(self.courseDB.questions[0])
     
     def serve_question(self, question):
         self.question = question
