@@ -21,7 +21,8 @@ class Student(object):
         self.username = username
 
 class CourseDB(object):
-    def __init__(self, dbfile='course.db', createSchema=False):
+    def __init__(self, questionFile=None, studentFile=None,
+                 dbfile='course.db', createSchema=False):
         self.dbfile = dbfile
         if not os.path.exists(dbfile):
             createSchema = True
@@ -44,6 +45,7 @@ class CourseDB(object):
             uid integer,
             question_id integer,
             cluster_id integer,
+            is_correct integer,
             answer text,
             confidence integer,
             submit_time integer,
@@ -55,7 +57,12 @@ class CourseDB(object):
             critique_id integer,
             criticisms text)''')
             conn.commit()
-        self.make_student_dict(c)
+        if studentFile:
+            self.load_student_file(studentFile, c=c, conn=conn)
+        else:
+            self.make_student_dict(c)
+        if questionFile:
+            self.load_question_file(questionFile, c=c, conn=conn)
         c.close()
         conn.close()
 
@@ -72,29 +79,36 @@ class CourseDB(object):
         self.students = d
         self.userdict = users
 
-    def load_student_file(self, path):
+    def load_student_file(self, path, **kwargs):
         'read UID,fullname CSV file'
-        self.save_csv_to_db(path, self.insert_students, self.make_student_dict)
+        self.save_csv_to_db(path, self.insert_students, self.make_student_dict,
+                            **kwargs)
 
     def insert_students(self, users, c):
         for uid,fullname in users:
             c.execute('insert into students values (?,?,NULL,date("now"),"admin")',
                       (uid, fullname))
 
-    def save_csv_to_db(self, path, func, postfunc=None):
+    def save_csv_to_db(self, path, func, postfunc=None, c=None, conn=None):
+        'generic csv reader, uses func to actually save the rows to db'
         ifile = open(path, 'Ub')
         try:
             rows = csv.reader(ifile)
-            conn = sqlite3.connect(self.dbfile)
-            c = conn.cursor()
+            if not c: # need to open connection to the database
+                conn = sqlite3.connect(self.dbfile)
+                c = conn.cursor()
+                doClose = True
+            else:
+                doClose = False
             try:
                 func(rows, c)
                 conn.commit()
                 if postfunc:
                     postfunc(c)
             finally:
-                c.close()
-                conn.close()
+                if doClose: # need to close our connection
+                    c.close()
+                    conn.close()
         finally:
             ifile.close()
 
@@ -152,9 +166,9 @@ class CourseDB(object):
             c.close()
             conn.close()
 
-    def load_question_file(self, path):
+    def load_question_file(self, path, **kwargs):
         'read from CSV file to self.questions, and save to database'
-        self.save_csv_to_db(path, self.insert_questions)
+        self.save_csv_to_db(path, self.insert_questions, **kwargs)
 
     def insert_questions(self, questions, c):
         l = []
@@ -163,7 +177,7 @@ class CourseDB(object):
                       t[:2])
             klass = questionTypes[t[0]]
             if t[0] == 'mc':
-                q = klass(t[1], t[2], t[3:]) # multiple choice answer
+                q = klass(t[1], t[2], t[3], t[4:]) # multiple choice answer
             else:
                 q = klass(*t[1:])
             q.id = c.lastrowid
@@ -181,8 +195,9 @@ class CourseDB(object):
             for r in question.responses.values(): # insert rows
                 dt = datetime.fromtimestamp(r.timestamp)
                 c.execute('''insert into responses values
-                (NULL,?,?,NULL,?,?,datetime(?),?,NULL,?,NULL,?,NULL,?)''',
-                          (r.uid, question.id, r.get_answer(), r.confidence,
+                (NULL,?,?,NULL,?,?,?,datetime(?),?,NULL,?,NULL,?,NULL,?)''',
+                          (r.uid, question.id, question.is_correct(r),
+                           r.get_answer(), r.confidence,
                            dt.isoformat().split('.')[0], r.reasons,
                            r.confidence2, r.finalConfidence, r.criticisms))
                 r.id = c.lastrowid # record its primary key
@@ -347,6 +362,9 @@ class QuestionBase(object):
         response.prototype = category
         self.unclustered.remove(response)
 
+    def is_correct(self, response):
+        return response.prototype == self.correctChoice
+
     def cluster_form(self):
         uid = cherrypy.session['UID']
         response = self.responses[uid]
@@ -466,8 +484,9 @@ class QuestionBase(object):
 
 
 class QuestionChoice(QuestionBase):
-    def build_form(self, choices):
+    def build_form(self, correctChoice, choices):
         'ask the user to choose an option'
+        self.correctChoice = int(correctChoice)
         self.choices = choices
         form = webui.Form('answer')
         l = []
@@ -496,6 +515,9 @@ class QuestionChoice(QuestionBase):
         return '''Thanks for answering! When your instructor asks you to, please click here to
         <A HREF="/reconsider_form">continue</A>.'''
     answer.exposed = True
+
+    def is_correct(self, response):
+        return response.choice == self.correctChoice
 
     _afterURL = '/vote_form'
     _afterText = 'the final vote'
@@ -596,15 +618,8 @@ def build_reconsider_form(title='Reconsidering your answer'):
 class PipRoot(object):
     _cp_config = {'tools.sessions.on': True}
 
-    def __init__(self, enableMathJax=False, registerAll=False, **kwargs):
-        self.courseDB = CourseDB(**kwargs)
-        self._registerHTML = login.register_form()
-        if registerAll:
-            self._loginHTML = self._registerHTML
-        else:
-            self._loginHTML = login.login_form()
-        self._reloadHTML = redirect()
-        self._reconsiderHTML = build_reconsider_form()
+    def __init__(self, questionFile, enableMathJax=True, registerAll=False,
+                 **kwargs):
         self.enableMathJax = enableMathJax
         if enableMathJax:
             webui.Document._defaultHeader = '''<script type="text/x-mathjax-config">
@@ -616,6 +631,14 @@ class PipRoot(object):
             </script>
             <script type="text/javascript" src="/MathJax/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
             '''
+        self.courseDB = CourseDB(questionFile, **kwargs)
+        self._registerHTML = login.register_form()
+        if registerAll:
+            self._loginHTML = self._registerHTML
+        else:
+            self._loginHTML = login.login_form()
+        self._reloadHTML = redirect()
+        self._reconsiderHTML = build_reconsider_form()
     
     def serve_question(self, question):
         self.question = question
