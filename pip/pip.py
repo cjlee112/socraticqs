@@ -6,6 +6,7 @@ import sqlite3
 import csv
 import login
 import time
+from datetime import datetime
 
 class BadUIDError(ValueError):
     pass
@@ -33,6 +34,26 @@ class CourseDB(object):
             username text,
             date_added integer,
             added_by text)''')
+            c.execute('''create table questions
+            (id integer primary key,
+            qtype text,
+            title text,
+            date_added integer)''')
+            c.execute('''create table responses
+            (id integer primary key,
+            uid integer,
+            question_id integer,
+            cluster_id integer,
+            answer text,
+            confidence integer,
+            submit_time integer,
+            reasons text,
+            switched_id integer,
+            confidence2 integer,
+            final_id integer,
+            final_conf integer,
+            critique_id integer,
+            criticisms text)''')
             conn.commit()
         self.make_student_dict(c)
         c.close()
@@ -53,17 +74,24 @@ class CourseDB(object):
 
     def load_student_file(self, path):
         'read UID,fullname CSV file'
+        self.save_csv_to_db(path, self.insert_students, self.make_student_dict)
+
+    def insert_students(self, users, c):
+        for uid,fullname in users:
+            c.execute('insert into students values (?,?,NULL,date("now"),"admin")',
+                      (uid, fullname))
+
+    def save_csv_to_db(self, path, func, postfunc=None):
         ifile = open(path, 'Ub')
         try:
-            users = csv.reader(ifile)
+            rows = csv.reader(ifile)
             conn = sqlite3.connect(self.dbfile)
             c = conn.cursor()
             try:
-                for uid,fullname in users:
-                    c.execute('insert into students values (?,?,NULL,date("now"),"admin")',
-                              (uid, fullname))
+                func(rows, c)
                 conn.commit()
-                self.make_student_dict(c)
+                if postfunc:
+                    postfunc(c)
             finally:
                 c.close()
                 conn.close()
@@ -114,11 +142,56 @@ class CourseDB(object):
         return 'Added user ' + username
 
     def _execute_and_commit(self, sql, args):
-        'execute a change to the db for commiting it later'
+        'execute a change to the db and commit it'
         conn = sqlite3.connect(self.dbfile)
         c = conn.cursor()
         try:
             c.execute(sql, args)
+            conn.commit()
+        finally:
+            c.close()
+            conn.close()
+
+    def load_question_file(self, path):
+        'read from CSV file to self.questions, and save to database'
+        self.save_csv_to_db(path, self.insert_questions)
+
+    def insert_questions(self, questions, c):
+        l = []
+        for t in questions:
+            c.execute('insert into questions values (NULL,?,?,date("now"))',
+                      t[:2])
+            klass = questionTypes[t[0]]
+            if t[0] == 'mc':
+                q = klass(t[1], t[2], t[3:]) # multiple choice answer
+            else:
+                q = klass(*t[1:])
+            q.id = c.lastrowid
+            l.append(q)
+        self.questions = l
+
+    def save_responses(self, question):
+        'save all responses to this question to the database'
+        def get_id(resp): # return None or the object's db id
+            if resp:
+                return resp.id
+        conn = sqlite3.connect(self.dbfile)
+        c = conn.cursor()
+        try:
+            for r in question.responses.values(): # insert rows
+                dt = datetime.fromtimestamp(r.timestamp)
+                c.execute('''insert into responses values
+                (NULL,?,?,NULL,?,?,datetime(?),?,NULL,?,NULL,?,NULL,?)''',
+                          (r.uid, question.id, r.get_answer(), r.confidence,
+                           dt.isoformat().split('.')[0], r.reasons,
+                           r.confidence2, r.finalConfidence, r.criticisms))
+                r.id = c.lastrowid # record its primary key
+            for r in question.responses.values(): # now set cross-reference IDs
+                c.execute('''update responses set cluster_id=?,
+                switched_id=?, final_id=?, critique_id=?
+                where id=?''', (get_id(r.prototype), get_id(r.response2),
+                                get_id(r.finalVote), get_id(r.critiqueTarget),
+                                r.id))
             conn.commit()
         finally:
             c.close()
@@ -143,6 +216,8 @@ class Response(object):
 class MultiChoiceResponse(Response):
     def save_data(self, choice):
         self.choice = int(choice)
+    def get_answer(self):
+        return self.choice
     def __str__(self):
         return '<B>%s</B>. %s<br>\n' % (letters[self.choice],
                                        self.question.choices[self.choice])
@@ -164,15 +239,22 @@ class ClusteredResponse(Response):
 class TextResponse(ClusteredResponse):
     def save_data(self, text):
         self.text = text
+    def get_answer(self):
+        return self.text
     def __str__(self):
         return self.text + '<br>\n'
 
 class ImageResponse(ClusteredResponse):
     def save_data(self, stem, image):
         self.fname = stem + '_' + image.filename
-        ifile = open(self.fname, 'w')
+        ifile = open(self.fname, 'wb')
         ifile.write(image.file.read())
         ifile.close()
+    def get_answer(self):
+        ifile = open(self.fname, 'rb')
+        data = ifile.read()
+        ifile.close()
+        return data
 
 class QuestionBase(object):
     def __init__(self, title, text, *args, **kwargs):
@@ -198,6 +280,8 @@ class QuestionBase(object):
                 does not exist.  Please re-enter it!
                 <A HREF='/reconsider_form'>Continue</A>.""")
             response.response2 = self.responses[partnerUID]
+        else:
+            response.response2 = None
         response.reasons = reasons
         response.confidence2 = confidence
 
@@ -402,8 +486,12 @@ class QuestionChoice(QuestionBase):
         response = MultiChoiceResponse(uid, self, confidence, choice)
         try: # append to its matching category
             self.categories[response].append(response)
+            for r in self.categories:
+                if r == response:
+                    response.prototype = r
         except KeyError: # add this as a new category
             self.categories[response] = [response]
+            response.prototype = response
         self.responses[uid] = response
         return '''Thanks for answering! When your instructor asks you to, please click here to
         <A HREF="/reconsider_form">continue</A>.'''
@@ -464,7 +552,11 @@ class QuestionUpload(QuestionBase):
 
     _afterURL = '/cluster_form'
     _afterText = 'categorize your answer'
-    
+
+
+questionTypes = dict(mc=QuestionChoice,
+                     text=QuestionText,
+                     image=QuestionUpload)
 
 def add_confidence_choice(form, levels=('Just guessing', 'Not quite sure',
                                         'Pretty sure')):
