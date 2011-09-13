@@ -329,7 +329,7 @@ class QuestionBase(object):
                                              (('add', str(r)),)))
         doc.append(form)
         return str(doc)
-    prototype_form.exposed = True
+
     def cluster_report(self):
         self.init_vote()
         s = '<h1>Done</h1>%d responses in %d categories:' \
@@ -351,7 +351,6 @@ class QuestionBase(object):
         return '''Added %d categories.  Tell the students to categorize
         themselves vs. your new categories.  When they are done,
         click here to <A HREF="/prototype_form">continue</A>.''' % n
-    add_prototypes.exposed = True
 
     def set_prototype(self, response, category=None):
         if category is None: # response is prototype for its own category
@@ -619,7 +618,7 @@ class PipRoot(object):
     _cp_config = {'tools.sessions.on': True}
 
     def __init__(self, questionFile, enableMathJax=True, registerAll=False,
-                 **kwargs):
+                 adminIP='127.0.0.1', **kwargs):
         self.enableMathJax = enableMathJax
         if enableMathJax:
             webui.Document._defaultHeader = '''<script type="text/x-mathjax-config">
@@ -631,6 +630,7 @@ class PipRoot(object):
             </script>
             <script type="text/javascript" src="/MathJax/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
             '''
+        self.adminIP = adminIP
         self.courseDB = CourseDB(questionFile, **kwargs)
         self._registerHTML = login.register_form()
         if registerAll:
@@ -646,8 +646,6 @@ class PipRoot(object):
         self._questionHTML = str(question)
         self.answer = question.answer
         self.reconsider = question.reconsider
-        self.prototype_form = question.prototype_form
-        self.add_prototypes = question.add_prototypes
         self.cluster_form = question.cluster_form
         self.vote = question.vote
         self.critique = question.critique
@@ -713,6 +711,22 @@ class PipRoot(object):
     def vote_form(self):
         return self.question._voteHTML
     vote_form.exposed = True
+
+    # admin interfaces
+    def auth_admin(self, func, **kwargs):
+        if cherrypy.request.remote.ip == self.adminIP:
+            return func(**kwargs)
+        else:
+            cherrypy.response.status = 401
+            return '<h1>Access denied</h1>'
+
+    def prototype_form(self, **kwargs):
+        return self.auth_admin(self.question.prototype_form, **kwargs)
+    prototype_form.exposed = True
+    
+    def add_prototypes(self, **kwargs):
+        return self.auth_admin(self.question.add_prototypes, **kwargs)
+    add_prototypes.exposed = True
         
 def test(title='Monty Hall',
          text=r'''The probability of winning by switching your choice is:
