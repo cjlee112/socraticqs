@@ -6,7 +6,7 @@ import sqlite3
 import csv
 import login
 import time
-from datetime import datetime
+from datetime import datetime, date
 
 class BadUIDError(ValueError):
     pass
@@ -86,8 +86,8 @@ class CourseDB(object):
 
     def insert_students(self, users, c):
         for uid,fullname in users:
-            c.execute('insert into students values (?,?,NULL,date("now"),"admin")',
-                      (uid, fullname))
+            c.execute('insert into students values (?,?,NULL,date(?),"admin")',
+                      (uid, fullname, date.today().isoformat()))
 
     def save_csv_to_db(self, path, func, postfunc=None, c=None, conn=None):
         'generic csv reader, uses func to actually save the rows to db'
@@ -148,8 +148,9 @@ class CourseDB(object):
         if username in self.userdict:
             raise BadUsernameError('Username %s is already taken.  Try again.'
                                    % username)
-        self._execute_and_commit('insert into students values (?,?,?,date("now"),"user")',
-                               (uid, username, fullname))
+        self._execute_and_commit('insert into students values (?,?,?,date(?),"user")',
+                                 (uid, username, fullname,
+                                  date.today().isoformat()))
         student = Student(uid, fullname, username)
         self.students[uid] = student
         self.userdict[username] = student
@@ -173,8 +174,8 @@ class CourseDB(object):
     def insert_questions(self, questions, c):
         l = []
         for t in questions:
-            c.execute('insert into questions values (NULL,?,?,date("now"))',
-                      t[:2])
+            c.execute('insert into questions values (NULL,?,?,date(?))',
+                      (t[0], t[1], date.today().isoformat()))
             klass = questionTypes[t[0]]
             if t[0] == 'mc':
                 q = klass(t[1], t[2], t[3], t[4:]) # multiple choice answer
@@ -188,25 +189,22 @@ class CourseDB(object):
         'save all responses to this question to the database'
         def get_id(resp): # return None or the object's db id
             if resp:
-                return resp.id
+                return resp.uid
         conn = sqlite3.connect(self.dbfile)
         c = conn.cursor()
         try:
             for r in question.responses.values(): # insert rows
                 dt = datetime.fromtimestamp(r.timestamp)
                 c.execute('''insert into responses values
-                (NULL,?,?,NULL,?,?,?,datetime(?),?,NULL,?,NULL,?,NULL,?)''',
-                          (r.uid, question.id, question.is_correct(r),
+                (NULL,?,?,?,?,?,?,datetime(?),?,?,?,?,?,?,?)''',
+                          (r.uid, question.id, get_id(r.prototype),
+                           question.is_correct(r),
                            r.get_answer(), r.confidence,
                            dt.isoformat().split('.')[0], r.reasons,
-                           r.confidence2, r.finalConfidence, r.criticisms))
+                           get_id(r.response2), r.confidence2,
+                           get_id(r.finalVote), r.finalConfidence,
+                           get_id(r.critiqueTarget), r.criticisms))
                 r.id = c.lastrowid # record its primary key
-            for r in question.responses.values(): # now set cross-reference IDs
-                c.execute('''update responses set cluster_id=?,
-                switched_id=?, final_id=?, critique_id=?
-                where id=?''', (get_id(r.prototype), get_id(r.response2),
-                                get_id(r.finalVote), get_id(r.critiqueTarget),
-                                r.id))
             conn.commit()
         finally:
             c.close()
@@ -326,19 +324,37 @@ class QuestionBase(object):
         doc.append(form)
         return str(doc)
 
+    def include_correct(self):
+        'ensure that correctAnswer is in our categories'
+        if self.correctAnswer not in self.categories:
+            self.categories[self.correctAnswer] = []
+            self.categoriesSorted = None # force this to update
+            self.list_categories()
+
     def cluster_report(self):
-        self.init_vote()
+        fmt = '%(answer)s<br><b>(%(tag)s answer chosen by %(n)d students)</b>'
         doc = webui.Document('Clustering Complete')
         doc.add_text('Done: %d responses in %d categories:'
                      % (len(self.responses), len(self.categories)), 'h1')
-        doc.add_text('Choose which answer is correct:')
-        doc.append(self.get_choice_form('correct', False, 0,
-                                        '''%(answer)s<br>
-                                        <b>(%(tag)s answer chosen by %(n)d students)</b><br>
-                                        '''))
-        doc.add_text('''<br>If none of these are correct, click here
-        to add the <A HREF="/add_correct">correct answer</A>.''')
+        try:
+            p = len(self.categories.get(self.correctAnswer, ())) * 100. \
+                / len(self.responses)
+        except AttributeError:
+            doc.add_text('Choose which answer is correct:')
+            doc.append(self.get_choice_form('correct', False, 0, fmt))
+            doc.add_text('''<br>If none of these are correct, click here
+            to add the <A HREF="/add_correct">correct answer</A>.''')
+        else:
+            doc.add_text('%2.0f%% of students got the correct answer' % p)
+            doc.append(self.get_choice_form('correct', False, 0, fmt))
+            doc.add_text('Tell the students to proceed with their vote.')
+            self.init_vote()
         return str(doc)
+
+    def correct(self, choice):
+        self.correctAnswer = self.categoriesSorted[int(choice)]
+        self.init_vote()
+        return '''Great.  Tell the students to proceed with their vote.'''
 
     def add_prototypes(self, **kwargs):
         n = 0
@@ -534,15 +550,27 @@ class QuestionChoice(QuestionBase):
         <A HREF="/reconsider_form">continue</A>.'''
     answer.exposed = True
 
+    def init_vote(self):
+        'ensure all choices shown in final vote'
+        for i in range(len(self.choices)):
+            r = MultiChoiceResponse(i, self, 0, i)
+            if r not in self.categories:
+                self.categories[r] = []
+        self.categoriesSorted = None # force this to update
+        self.list_categories()
+        QuestionBase.init_vote(self)
+
     _afterURL = '/vote_form'
     _afterText = 'the final vote'
         
 class QuestionText(QuestionBase):
-    def build_form(self, instructions=r'''(Briefly state your answer to the question
+    def build_form(self, correctText,
+                   instructions=r'''(Briefly state your answer to the question
     in the box below.  You may enter latex equations by enclosing them in
     pairs of dollar signs, e.g. \$\$c^2=a^2+b^2\$\$).<br>
     '''):
         'ask the user to enter a text answer'
+        self._correctText = correctText
         self.doc.append(webui.Data(instructions))
         form = webui.Form('answer')
         form.append(webui.Textarea('answer'))
@@ -560,13 +588,21 @@ class QuestionText(QuestionBase):
         <A HREF="/reconsider_form">continue</A>.'''
     answer.exposed = True
 
+    def add_correct(self):
+        self.correctAnswer = TextResponse(0, self, 0, self._correctText)
+        self.include_correct()
+        self.init_vote()
+        return '''Great.  Tell the students to proceed with their vote.'''
+
     _afterURL = '/cluster_form'
     _afterText = 'categorize your answer'
 
 class QuestionUpload(QuestionBase):
-    def build_form(stem='q', instructions='''(write your answer on a sheet of paper, take a picture,
+    def build_form(correctFile, stem='q',
+                   instructions='''(write your answer on a sheet of paper, take a picture,
         and upload the picture using the button below).<br>\n'''):
         'ask the user to upload an image file'
+        self._correctFile = correctFile
         self.stem = stem
         self.doc.append(webui.Data(instructions))
         form = webui.Form('answer')
@@ -588,6 +624,12 @@ class QuestionUpload(QuestionBase):
         return '''Thanks for answering!  When your instructor asks you to, please click here to
         <A HREF="/reconsider_form">continue</A>.'''
     answer.exposed = True
+
+    def add_correct(self):
+        self.correctAnswer = ImageResponse(0, self, 0, self._correctFile)
+        self.include_correct()
+        self.init_vote()
+        return '''Great.  Tell the students to proceed with their vote.'''
 
     _afterURL = '/cluster_form'
     _afterText = 'categorize your answer'
@@ -754,15 +796,23 @@ class PipRoot(object):
     def add_prototypes(self, **kwargs):
         return self.auth_admin(self.question.add_prototypes, **kwargs)
     add_prototypes.exposed = True
+
+    def correct(self, **kwargs):
+        return self.auth_admin(self.question.correct, **kwargs)
+    correct.exposed = True
+
+    def add_correct(self):
+        return self.auth_admin(self.question.add_correct)
+    add_correct.exposed = True
         
 def test(title='Monty Hall',
          text=r'''The probability of winning by switching your choice is:
          $$x = {-b \pm \sqrt{b^2-4ac} \over 2a}.$$''',
          choices=('1/3','1/2','2/3', 'Impossible to say'), tryText=True):
     if tryText:
-        q = QuestionText('monty hall', text)
+        q = QuestionText('monty hall', text, '2/3')
     else:
-        q = QuestionChoice(title, text, choices)
+        q = QuestionChoice(title, text, 2, choices)
     s = PipRoot(True)
     s.serve_question(q)
     s.start()
