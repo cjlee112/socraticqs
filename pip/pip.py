@@ -242,7 +242,10 @@ class MultiChoiceResponse(Response):
 class ClusteredResponse(Response):
     'a pair matches if they have the same prototype'
     def __cmp__(self, other):
-        return cmp(id(self.prototype), id(other.prototype))
+        try:
+            return cmp(id(self.prototype), id(other.prototype))
+        except AttributeError:
+            return cmp(id(self), id(other))
     def __hash__(self):
         try:
             return id(self.prototype)
@@ -258,13 +261,17 @@ class TextResponse(ClusteredResponse):
         return self.text + '<br>\n'
 
 class ImageResponse(ClusteredResponse):
-    def save_data(self, path):
+    def save_data(self, path, imageDir):
         self.path = path
-    def get_answer(self): ## must fix this !!!!
-        ifile = open(self.path, 'rb')
-        data = ifile.read()
-        ifile.close()
-        return data
+        self.imageDir = imageDir
+    def get_answer(self):
+        return self.path
+        ## ifile = open(os.path.join(self.imageDir, self.path), 'rb')
+        ## data = ifile.read()
+        ## ifile.close()
+        ## return data
+    def __str__(self):
+        return '<IMG SRC="/images/%s"><br>\n' % self.path
 
 class QuestionBase(object):
     def __init__(self, title, text, *args, **kwargs):
@@ -598,12 +605,14 @@ class QuestionText(QuestionBase):
     _afterText = 'categorize your answer'
 
 class QuestionUpload(QuestionBase):
-    def build_form(correctFile, stem='q',
+    def build_form(self, correctFile, stem='q',
                    instructions='''(write your answer on a sheet of paper, take a picture,
-        and upload the picture using the button below).<br>\n'''):
+        and upload the picture using the button below).<br>\n''',
+                   imageDir='static/images'):
         'ask the user to upload an image file'
         self._correctFile = correctFile
         self.stem = stem
+        self.imageDir = imageDir
         self.doc.append(webui.Data(instructions))
         form = webui.Form('answer')
         form.append(webui.Upload('image'))
@@ -615,10 +624,10 @@ class QuestionUpload(QuestionBase):
         'receive uploaded image file from user'
         uid = cherrypy.session['UID']
         fname = self.stem + str(len(self.responses)) + '_' + image.filename
-        ifile = open(fname, 'wb')
+        ifile = open(os.path.join(self.imageDir, fname), 'wb')
         ifile.write(image.file.read())
         ifile.close()
-        response = ImageResponse(uid, self, confidence, fname)
+        response = ImageResponse(uid, self, confidence, fname, self.imageDir)
         self.unclustered.add(response) # initially not categorized
         self.responses[uid] = response
         return '''Thanks for answering!  When your instructor asks you to, please click here to
@@ -626,7 +635,8 @@ class QuestionUpload(QuestionBase):
     answer.exposed = True
 
     def add_correct(self):
-        self.correctAnswer = ImageResponse(0, self, 0, self._correctFile)
+        self.correctAnswer = ImageResponse(0, self, 0, self._correctFile,
+                                           self.imageDir)
         self.include_correct()
         self.init_vote()
         return '''Great.  Tell the students to proceed with their vote.'''
