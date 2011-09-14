@@ -24,6 +24,7 @@ class CourseDB(object):
     def __init__(self, questionFile=None, studentFile=None,
                  dbfile='course.db', createSchema=False):
         self.dbfile = dbfile
+        self.logins = set()
         if not os.path.exists(dbfile):
             createSchema = True
         conn = sqlite3.connect(dbfile)
@@ -123,6 +124,16 @@ class CourseDB(object):
             if uid in self.students:
                 raise BadUsernameError('did you mistype your username?')
             raise BadUsernameError('unknown user ' + username)
+
+    def login(self, uid, username):
+        'add this student as an active login on this session'
+        cherrypy.session['UID'] = uid
+        cherrypy.session['username'] = username
+        self.logins.add(uid)
+
+    def logout(self, uid):
+        # need to cancel this session!!
+        self.logins.remove(uid)
 
     def add_student(self, uid, username, fullname, uid2):
         'add a login'
@@ -275,6 +286,7 @@ class ImageResponse(ClusteredResponse):
 
 class QuestionBase(object):
     def __init__(self, title, text, *args, **kwargs):
+        self.title = title
         doc = webui.Document(title)
         self.doc = doc
         doc.add_text(text)
@@ -764,8 +776,7 @@ class PipRoot(object):
             self.courseDB.authenticate(uid, username)
         except ValueError, e:
             return str(e) + ' <A HREF="/">Continue</A>'
-        cherrypy.session['UID'] = uid
-        cherrypy.session['username'] = username
+        self.courseDB.login(uid, username)
         return self._reloadHTML
     login.exposed = True
 
@@ -786,10 +797,18 @@ class PipRoot(object):
             msg = self.courseDB.add_student(uid, username, fullname, uid2)
         except ValueError, e:
             return str(e) + ' <A HREF="/register_form">Continue</A>'
-        cherrypy.session['UID'] = uid
-        cherrypy.session['username'] = username
+        self.courseDB.login(uid, username)
         return msg + '. <A HREF="/">Continue</A>'
     register.exposed = True
+
+    def logout(self):
+        'close this session and remove from active logins list'
+        try:
+            self.courseDB.logout()
+        except KeyError:
+            return 'Your session already timed out or you were not logged in.'
+        return 'You are now logged out.'
+    logout.exposed = True
 
     def reconsider_form(self):
         return self._reconsiderHTML
@@ -812,21 +831,33 @@ class PipRoot(object):
             cherrypy.response.status = 401
             return '<h1>Access denied</h1>'
 
-    def prototype_form(self, **kwargs):
-        return self.auth_admin(self.question.prototype_form, **kwargs)
-    prototype_form.exposed = True
-    
-    def add_prototypes(self, **kwargs):
-        return self.auth_admin(self.question.add_prototypes, **kwargs)
-    add_prototypes.exposed = True
+    def _admin_page(self):
+        doc = webui.Document('PIPS Console')
+        doc.add_text('%d students logged in.' % len(self.courseDB.logins))
+        doc.add_text('Concept Tests', 'h1')
+        for i,q in enumerate(self.courseDB.questions):
+            doc.add_text('<A HREF="/start_question?q=%d">%s</A>'
+                         % (i, q.title), 'LI')
+        return str(doc)
 
-    def correct(self, **kwargs):
-        return self.auth_admin(self.question.correct, **kwargs)
-    correct.exposed = True
+    def _start_question(self, q):
+        question = self.courseDB.questions[int(q)]
+        self.serve_question(question)
+        return '''Successfully setup %s.
+        Once the students have entered their answers,
+        click here to proceed to the
+        <A HREF="/prototype_form">analysis page</A>.''' % question.title
 
-    def add_correct(self):
-        return self.auth_admin(self.question.add_correct)
-    add_correct.exposed = True
+    d = dict(admin='self._admin_page',
+             prototype_form='self.question.prototype_form',
+             add_prototypes='self.question.add_prototypes',
+             correct='self.question.correct',
+             add_correct='self.question.add_correct',
+             start_question='self._start_question')
+    for name,funcstr in d.items(): # create authenticated admin methods
+        exec '''%s=lambda self, **kwargs:self.auth_admin(%s, **kwargs)
+%s.exposed = True''' % (name, funcstr, name)
+    del d # don't leave this cluttering the class attributes
         
 def test(title='Monty Hall',
          text=r'''The probability of winning by switching your choice is:
