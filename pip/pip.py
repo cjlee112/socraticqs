@@ -311,7 +311,7 @@ class QuestionBase(object):
                                                    self._afterText)
     reconsider.exposed = True
 
-    def prototype_form(self, offset=0, maxview=10,
+    def prototype_form(self, offset=0, maxview=None,
                        title='Categorize Responses'):
         if not self.unclustered:
             return self.cluster_report()
@@ -321,7 +321,12 @@ class QuestionBase(object):
             for r in self.categories:
                 doc.add_text(str(r))
         doc.add_text('%d Uncategorized Responses' % len(self.unclustered), 'h1')
+        doc.add_text('''Choose one or more responses as new, distinct
+        categories of student answers:<br>
+        ''')
         l = list(self.unclustered)[offset:]
+        if not maxview:
+            maxview = self.maxview
         if maxview and len(l) > maxview:
             l = l[:maxview]
         form = webui.Form('add_prototypes')
@@ -329,6 +334,12 @@ class QuestionBase(object):
             form.append(webui.RadioSelection('resp_' + str(r.uid),
                                              (('add', str(r)),)))
         doc.append(form)
+        if offset > 0:
+            doc.add_text('<A HREF="/prototype_form?offset=%d&maxview=%d">[Previous %d]</A>\n'
+                         % (max(0, offset - maxview), maxview, maxview))
+        if maxview and len(self.unclustered) > offset + maxview:
+            doc.add_text('<A HREF="/prototype_form?offset=%d&maxview=%d">[Next %d]</A>\n'
+                         % (offset + maxview, maxview, maxview))
         return str(doc)
 
     def include_correct(self):
@@ -575,9 +586,10 @@ class QuestionText(QuestionBase):
                    instructions=r'''(Briefly state your answer to the question
     in the box below.  You may enter latex equations by enclosing them in
     pairs of dollar signs, e.g. \$\$c^2=a^2+b^2\$\$).<br>
-    '''):
+    ''', maxview=100):
         'ask the user to enter a text answer'
         self._correctText = correctText
+        self.maxview = maxview
         self.doc.append(webui.Data(instructions))
         form = webui.Form('answer')
         form.append(webui.Textarea('answer'))
@@ -608,9 +620,10 @@ class QuestionUpload(QuestionBase):
     def build_form(self, correctFile, stem='q',
                    instructions='''(write your answer on a sheet of paper, take a picture,
         and upload the picture using the button below).<br>\n''',
-                   imageDir='static/images'):
+                   imageDir='static/images', maxview=10):
         'ask the user to upload an image file'
         self._correctFile = correctFile
+        self.maxview = maxview
         self.stem = stem
         self.imageDir = imageDir
         self.doc.append(webui.Data(instructions))
