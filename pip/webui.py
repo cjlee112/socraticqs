@@ -245,7 +245,7 @@ class Input(Variable):
                 pass
         return s
     def __str__(self):
-        if self.type=='text':
+        if self.type=='text' or self.type == 'password':
             return '\t<INPUT%s/>\n' \
                    % self.field_list('type','name','size','value','ID')
         elif self.type=='hidden':
