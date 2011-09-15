@@ -293,7 +293,6 @@ class QuestionBase(object):
         doc.append(self.build_form(*args, **kwargs))
         self.responses = {}
         self.categories = {}
-        self.unclustered = set()
 
     def __str__(self):
         return str(self.doc)
@@ -315,7 +314,7 @@ class QuestionBase(object):
                 have entered an answer!  Tell them to enter their answer, then
                 click your browser's back button to resubmit your form."""
         else:
-            response.response2 = None
+            response.response2 = response
         response.reasons = reasons
         response.confidence2 = confidence
         return '''Thanks! When your instructor asks you to, please click here to
@@ -325,18 +324,19 @@ class QuestionBase(object):
 
     def prototype_form(self, offset=0, maxview=None,
                        title='Categorize Responses'):
-        if not self.unclustered:
+        unclustered = self.count_unclustered()
+        if unclustered == 0:
             return self.cluster_report()
         doc = webui.Document(title)
         if self.categories: # not empty
             doc.add_text('%d Categories' % len(self.categories), 'h1')
             for r in self.categories:
                 doc.add_text(str(r))
-        doc.add_text('%d Uncategorized Responses' % len(self.unclustered), 'h1')
+        doc.add_text('%d Uncategorized Responses' % unclustered, 'h1')
         doc.add_text('''Choose one or more responses as new, distinct
         categories of student answers:<br>
         ''')
-        l = list(self.unclustered)[offset:]
+        l = list(self.iter_unclustered())[offset:]
         if not maxview:
             maxview = self.maxview
         if maxview and len(l) > maxview:
@@ -349,7 +349,7 @@ class QuestionBase(object):
         if offset > 0:
             doc.add_text('<A HREF="/prototype_form?offset=%d&maxview=%d">[Previous %d]</A>\n'
                          % (max(0, offset - maxview), maxview, maxview))
-        if maxview and len(self.unclustered) > offset + maxview:
+        if maxview and unclustered > offset + maxview:
             doc.add_text('<A HREF="/prototype_form?offset=%d&maxview=%d">[Next %d]</A>\n'
                          % (offset + maxview, maxview, maxview))
         return str(doc)
@@ -360,6 +360,14 @@ class QuestionBase(object):
             self.categories[self.correctAnswer] = []
             self.categoriesSorted = None # force this to update
             self.list_categories()
+
+    def count_unclustered(self):
+        return len(self.responses) - sum([len(t) for t in self.categories.values()])
+
+    def iter_unclustered(self):
+        for r in self.responses.values():
+            if not hasattr(r, 'prototype'):
+                yield r
 
     def cluster_report(self):
         fmt = '%(answer)s<br><b>(%(tag)s answer chosen by %(n)d students)</b>'
@@ -418,7 +426,6 @@ class QuestionBase(object):
         else:
             self.categories[category].append(response)
         response.prototype = category
-        self.unclustered.remove(response)
 
     def is_correct(self, response):
         return response == self.correctAnswer
@@ -487,7 +494,10 @@ class QuestionBase(object):
             if maxreasons and responses:
                 s += '<h3>Some arguments for this:</h3>\n'
                 for r in responses[:maxreasons]:
-                    s += '<LI>%s</LI>\n' % r.reasons
+                    try:
+                        s += '<LI>%s</LI>\n' % r.reasons
+                    except AttributeError:
+                        pass
                 separator = '<hr>\n'
             s += separator
             l.append((i, s))
@@ -547,6 +557,22 @@ class QuestionBase(object):
         response.criticisms = criticisms
         return '''Thanks! When your instructor asks you to, please click here to
         <A HREF="/">continue</A>.'''
+
+    def count_rounds(self):
+        'return vote counts for the three rounds of response'
+        d1 = {}
+        d2 = {}
+        d3 = {}
+        for r in self.responses:
+            d1[r] = d1.get(r, 0) + 1
+            r2 = r.response2
+            d2[r2] = d2.get(r2, 0) + 1
+            r3 = r.finalVote
+            d3[r3] = d3.get(r3, 0) + 1
+        return d1, d2, d3
+
+    def analysis(self):
+        pass
 
 
 
@@ -613,7 +639,6 @@ class QuestionText(QuestionBase):
         'receive text answer from user'
         uid = cherrypy.session['UID']
         response = TextResponse(uid, self, confidence, answer)
-        self.unclustered.add(response) # initially not categorized
         self.responses[uid] = response
         return '''Thanks for answering!  When your instructor asks you to, please click here to
         <A HREF="/reconsider_form">continue</A>.'''
@@ -653,7 +678,6 @@ class QuestionUpload(QuestionBase):
         ifile.write(image.file.read())
         ifile.close()
         response = ImageResponse(uid, self, confidence, fname, self.imageDir)
-        self.unclustered.add(response) # initially not categorized
         self.responses[uid] = response
         return '''Thanks for answering!  When your instructor asks you to, please click here to
         <A HREF="/reconsider_form">continue</A>.'''
@@ -744,6 +768,7 @@ class PipRoot(object):
         self.answer = question.answer
         self.reconsider = question.reconsider
         self.cluster_form = question.cluster_form
+        self.cluster = question.cluster
         self.vote = question.vote
         self.critique = question.critique
         self.self_critique = question.self_critique
