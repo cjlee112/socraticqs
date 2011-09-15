@@ -272,8 +272,9 @@ class TextResponse(ClusteredResponse):
         return self.text + '<br>\n'
 
 class ImageResponse(ClusteredResponse):
-    def save_data(self, path, imageDir):
+    def save_data(self, path, text, imageDir):
         self.path = path
+        self.text = text
         self.imageDir = imageDir
     def get_answer(self):
         return self.path
@@ -282,7 +283,12 @@ class ImageResponse(ClusteredResponse):
         ## ifile.close()
         ## return data
     def __str__(self):
-        return '<IMG SRC="/images/%s"><br>\n' % self.path
+        s = ''
+        if self.path:
+            s += '<IMG SRC="/images/%s"><br>\n' % self.path
+        if self.text:
+            s += self.text + '<br>\n'
+        return s
 
 class QuestionBase(object):
     def __init__(self, title, text, *args, **kwargs):
@@ -681,27 +687,34 @@ class QuestionUpload(QuestionBase):
         self.doc.append(webui.Data(instructions))
         form = webui.Form('answer')
         form.append(webui.Upload('image'))
+        form.append('''<br>Optionally, you may enter a text answer, e.g. if
+        you cannot submit your answer as an image:<br>''')
+        form.append(webui.Textarea('answer2'))
         add_confidence_choice(form)
         form.append('<br>\n')
         return form
 
-    def answer(self, image=None, confidence=None):
+    def answer(self, image=None, answer2='', confidence=None):
         'receive uploaded image file from user'
-        if missing_params(image, confidence):
+        if confidence is None or (not image.file and not answer2):
             return _missing_arg_msg
         uid = cherrypy.session['UID']
-        fname = self.stem + str(len(self.responses)) + '_' + image.filename
-        ifile = open(os.path.join(self.imageDir, fname), 'wb')
-        ifile.write(image.file.read())
-        ifile.close()
-        response = ImageResponse(uid, self, confidence, fname, self.imageDir)
+        if image.file:
+            fname = self.stem + str(len(self.responses)) + '_' + image.filename
+            ifile = open(os.path.join(self.imageDir, fname), 'wb')
+            ifile.write(image.file.read())
+            ifile.close()
+        else:
+            fname = None
+        response = ImageResponse(uid, self, confidence, fname, answer2,
+                                 self.imageDir)
         self.responses[uid] = response
         return '''Thanks for answering!  When your instructor asks you to, please click here to
         <A HREF="/reconsider_form">continue</A>.'''
     answer.exposed = True
 
     def add_correct(self):
-        self.correctAnswer = ImageResponse(0, self, 0, self._correctFile,
+        self.correctAnswer = ImageResponse(0, self, 0, self._correctFile, '',
                                            self.imageDir)
         self.include_correct()
         self.init_vote()
