@@ -297,7 +297,10 @@ class QuestionBase(object):
     def __str__(self):
         return str(self.doc)
 
-    def reconsider(self, reasons, status, confidence, partner):
+    def reconsider(self, reasons=None, status=None, confidence=None,
+                   partner=None):
+        if missing_params(reasons, status, confidence, partner) or not reasons:
+            return _missing_arg_msg
         uid = cherrypy.session['UID']
         response = self.responses[uid]
         if status == 'switched':
@@ -458,7 +461,9 @@ class QuestionBase(object):
         doc.append(form)
         return str(doc)
 
-    def cluster(self, match):
+    def cluster(self, match=None):
+        if missing_params(match):
+            return _missing_arg_msg
         uid = cherrypy.session['UID']
         if match == 'none':
             return '''OK.  Hopefully we can cluster your answer in the next
@@ -530,7 +535,9 @@ class QuestionBase(object):
         doc.append(form)
         self._selfCritiqueHTML = str(doc)
         
-    def vote(self, choice, confidence):
+    def vote(self, choice=None, confidence=None):
+        if missing_params(choice, confidence):
+            return _missing_arg_msg
         uid = cherrypy.session['UID']
         response = self.responses[uid]
         category = self.categoriesSorted[int(choice)]
@@ -542,7 +549,9 @@ class QuestionBase(object):
             return self._critiqueHTML
     vote.exposed = True
 
-    def critique(self, criticisms, choice):
+    def critique(self, criticisms=None, choice=None):
+        if missing_params(criticisms, choice):
+            return _missing_arg_msg
         category = self.categoriesSorted[int(choice)]
         return self.save_critique(criticisms, category)
     critique.exposed = True
@@ -593,7 +602,9 @@ class QuestionChoice(QuestionBase):
         form.append('<br>\n')
         return form
 
-    def answer(self, choice, confidence):
+    def answer(self, choice=None, confidence=None):
+        if missing_params(choice, confidence):
+            return _missing_arg_msg
         uid = cherrypy.session['UID']
         response = MultiChoiceResponse(uid, self, confidence, choice)
         try: # append to its matching category
@@ -637,8 +648,10 @@ class QuestionText(QuestionBase):
         form.append('<br>\n')
         return form
 
-    def answer(self, answer, confidence):
+    def answer(self, answer=None, confidence=None):
         'receive text answer from user'
+        if missing_params(answer, confidence) or not answer:
+            return _missing_arg_msg
         uid = cherrypy.session['UID']
         response = TextResponse(uid, self, confidence, answer)
         self.responses[uid] = response
@@ -672,8 +685,10 @@ class QuestionUpload(QuestionBase):
         form.append('<br>\n')
         return form
 
-    def answer(self, image, confidence):
+    def answer(self, image=None, confidence=None):
         'receive uploaded image file from user'
+        if missing_params(image, confidence):
+            return _missing_arg_msg
         uid = cherrypy.session['UID']
         fname = self.stem + str(len(self.responses)) + '_' + image.filename
         ifile = open(os.path.join(self.imageDir, fname), 'wb')
@@ -733,7 +748,14 @@ def build_reconsider_form(title='Reconsidering your answer'):
     doc.append(form)
     return str(doc)
 
+_missing_arg_msg = '''You forgot to enter some required information into
+the form.  Please click the Back button in your browser to enter
+the required information.'''
 
+def missing_params(*args):
+    for arg in args:
+        if arg is None:
+            return True
 
 class PipRoot(object):
     _cp_config = {'tools.sessions.on': True}
