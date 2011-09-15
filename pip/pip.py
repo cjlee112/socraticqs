@@ -352,14 +352,15 @@ class QuestionBase(object):
         if maxview and unclustered > offset + maxview:
             doc.add_text('<A HREF="/prototype_form?offset=%d&maxview=%d">[Next %d]</A>\n'
                          % (offset + maxview, maxview, maxview))
+        doc.add_text('''<br>If you want to "declare victory", click here to
+        proceed to the <A HREF="/cluster_report">cluster report</A>.''')
         return str(doc)
 
     def include_correct(self):
         'ensure that correctAnswer is in our categories'
         if self.correctAnswer not in self.categories:
             self.categories[self.correctAnswer] = []
-            self.categoriesSorted = None # force this to update
-            self.list_categories()
+            self.list_categories(True) # force this to update
 
     def count_unclustered(self):
         return len(self.responses) - sum([len(t) for t in self.categories.values()])
@@ -402,18 +403,15 @@ class QuestionBase(object):
                 response = self.responses[uid]
                 self.set_prototype(response)
                 n += 1
-        self.categoriesSorted = None # force this to update
+        self.list_categories(True) # force this to update
         self._clusterFormHTML = self.build_cluster_form()
         return '''Added %d categories.  Tell the students to categorize
         themselves vs. your new categories.  When they are done,
         click here to <A HREF="/prototype_form">continue</A>.''' % n
 
-    def list_categories(self):
-        try:
-            if self.categoriesSorted: # no need for update
-                return self.categoriesSorted
-        except AttributeError: # must create this list
-            pass
+    def list_categories(self, update=False):
+        if not update and self.categoriesSorted: # no need for update
+            return self.categoriesSorted
         l = list(self.categories)
         l.sort()
         self.categoriesSorted = l
@@ -437,7 +435,12 @@ class QuestionBase(object):
             return '''Your answer already matches a category.
             When your instructor asks you to, please click here to
             continue to the <A HREF="/vote_form">final vote</A>.'''
-        return self._clusterFormHTML
+        try:
+            return self._clusterFormHTML
+        except AttributeError:
+            return '''No categories have yet been added.
+            When your instructor asks you to, please click here to
+            continue to <A HREF="/cluster_form">categorize your answer</A>.'''
     cluster_form.exposed = True
 
     def build_cluster_form(self, title='Cluster Your Answer'):
@@ -612,8 +615,7 @@ class QuestionChoice(QuestionBase):
             r = MultiChoiceResponse(i, self, 0, i)
             if r not in self.categories:
                 self.categories[r] = []
-        self.categoriesSorted = None # force this to update
-        self.list_categories()
+        self.list_categories(True) # force this to update
         QuestionBase.init_vote(self)
 
     _afterURL = '/vote_form'
@@ -877,6 +879,7 @@ class PipRoot(object):
     d = dict(admin='self._admin_page',
              prototype_form='self.question.prototype_form',
              add_prototypes='self.question.add_prototypes',
+             cluster_report='self.question.cluster_report',
              correct='self.question.correct',
              add_correct='self.question.add_correct',
              start_question='self._start_question')
