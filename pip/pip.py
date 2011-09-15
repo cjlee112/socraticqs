@@ -132,7 +132,7 @@ class CourseDB(object):
         self.logins.add(uid)
 
     def logout(self, uid):
-        # need to cancel this session!!
+        cherrypy.lib.sessions.expire()
         self.logins.remove(uid)
 
     def add_student(self, uid, username, fullname, uid2):
@@ -829,10 +829,11 @@ class PipRoot(object):
     def logout(self):
         'close this session and remove from active logins list'
         try:
-            self.courseDB.logout()
+            self.courseDB.logout(cherrypy.session['UID'])
         except KeyError:
-            return 'Your session already timed out or you were not logged in.'
-        return 'You are now logged out.'
+            s = 'Your session already timed out or you were not logged in.'
+        s = 'You are now logged out.'
+        return s + '<br>\nClick here to <A HREF="/">login</A> again.'
     logout.exposed = True
 
     def reconsider_form(self):
