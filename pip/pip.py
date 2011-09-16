@@ -7,6 +7,7 @@ import csv
 import login
 import time
 from datetime import datetime, date
+import subprocess
 
 class BadUIDError(ValueError):
     pass
@@ -293,6 +294,7 @@ class ImageResponse(ClusteredResponse):
 class QuestionBase(object):
     def __init__(self, title, text, *args, **kwargs):
         self.title = title
+        self.answered = set()
         doc = webui.Document(title)
         self.doc = doc
         doc.add_text(text)
@@ -326,6 +328,7 @@ class QuestionBase(object):
             response.response2 = response
         response.reasons = reasons
         response.confidence2 = confidence
+        self.alert_if_done()
         return '''Thanks! When your instructor asks you to, please click here to
             continue to <A HREF="%s">%s</A>.''' % (self._afterURL,
                                                    self._afterText)
@@ -379,6 +382,9 @@ class QuestionBase(object):
             if not hasattr(r, 'prototype'):
                 yield r
 
+    _gotoVoteHTML = '''Tell the students to proceed with their vote.
+    Finally, click here to <A HREF="/analysis">analyze the results</A>.'''
+
     def cluster_report(self):
         fmt = '%(answer)s<br><b>(%(tag)s answer chosen by %(n)d students)</b>'
         doc = webui.Document('Clustering Complete')
@@ -396,16 +402,14 @@ class QuestionBase(object):
         else:
             doc.add_text('%2.0f%% of students got the correct answer' % p)
             doc.append(self.get_choice_form('correct', False, 0, fmt))
-            doc.add_text('''Tell the students to proceed with their vote.
-            Finally, click here to
-            <A HREF="/analysis">analyze the results</A>.''')
+            doc.add_text(self._gotoVoteHTML)
             self.init_vote()
         return str(doc)
 
     def correct(self, choice):
         self.correctAnswer = self.categoriesSorted[int(choice)]
         self.init_vote()
-        return '''Great.  Tell the students to proceed with their vote.'''
+        return 'Great.  ' + self._gotoVoteHTML
 
     def add_prototypes(self, **kwargs):
         n = 0
@@ -543,6 +547,7 @@ class QuestionBase(object):
         form.append('<br>\n')
         doc.append(form)
         self._selfCritiqueHTML = str(doc)
+        self.answered.clear()
         
     def vote(self, choice=None, confidence=None):
         if missing_params(choice, confidence):
@@ -576,6 +581,7 @@ class QuestionBase(object):
             category = response
         response.critiqueTarget = category
         response.criticisms = criticisms
+        self.alert_if_done()
         return '''Thanks! When your instructor asks you to, please click here to
         <A HREF="/">continue</A>.'''
 
@@ -632,6 +638,15 @@ class QuestionBase(object):
         <A HREF='/admin'>PIPS console</A>.''')
         return str(doc)
 
+    def alert_if_done(self, initial=False):
+        self.answered.add(cherrypy.session['UID'])
+        if initial:
+            if len(self.answered) == len(self.courseDB.logins):
+                subprocess.call('sh beep.sh &', shell=True)
+        else:
+            if len(self.answered) == len(self.responses):
+                subprocess.call('sh beep.sh &', shell=True)
+
 
 class QuestionChoice(QuestionBase):
     def build_form(self, correctChoice, choices):
@@ -661,6 +676,7 @@ class QuestionChoice(QuestionBase):
             self.categories[response] = [response]
             response.prototype = response
         self.responses[uid] = response
+        self.alert_if_done(True)
         return '''Thanks for answering! When your instructor asks you to, please click here to
         <A HREF="/reconsider_form">continue</A>.'''
     answer.exposed = True
@@ -700,6 +716,7 @@ class QuestionText(QuestionBase):
         uid = cherrypy.session['UID']
         response = TextResponse(uid, self, confidence, answer)
         self.responses[uid] = response
+        self.alert_if_done(True)
         return '''Thanks for answering!  When your instructor asks you to, please click here to
         <A HREF="/reconsider_form">continue</A>.'''
     answer.exposed = True
@@ -708,7 +725,7 @@ class QuestionText(QuestionBase):
         self.correctAnswer = TextResponse(0, self, 0, self._correctText)
         self.include_correct()
         self.init_vote()
-        return '''Great.  Tell the students to proceed with their vote.'''
+        return 'Great.  ' + self._gotoVoteHTML
 
     _afterURL = '/cluster_form'
     _afterText = 'categorize your answer'
@@ -748,6 +765,7 @@ class QuestionUpload(QuestionBase):
         response = ImageResponse(uid, self, confidence, fname, answer2,
                                  self.imageDir)
         self.responses[uid] = response
+        self.alert_if_done(True)
         return '''Thanks for answering!  When your instructor asks you to, please click here to
         <A HREF="/reconsider_form">continue</A>.'''
     answer.exposed = True
@@ -757,7 +775,7 @@ class QuestionUpload(QuestionBase):
                                            self.imageDir)
         self.include_correct()
         self.init_vote()
-        return '''Great.  Tell the students to proceed with their vote.'''
+        return 'Great.  ' + self._gotoVoteHTML
 
     _afterURL = '/cluster_form'
     _afterText = 'categorize your answer'
@@ -946,17 +964,25 @@ class PipRoot(object):
         question = self.courseDB.questions[int(q)]
         self.serve_question(question)
         return '''Successfully setup %s.
-        Once the students have entered their answers,
-        click here to proceed to the
-        <A HREF="/prototype_form">analysis page</A>.''' % question.title
+        Once the students have entered their answers, click here to
+        <A HREF="/start_round2">start round 2</A>.''' % question.title
+
+    def _start_round2(self, **kwargs):
+        self.question.answered.clear()
+        if self.question.count_unclustered(): # need to do clustering
+            return self.question.prototype_form(**kwargs)
+        return '''Please wait until the students are done with
+        round 2, then click here to
+        <A HREF="/prototype_form">view initial results</A>.'''
 
     d = dict(admin='self._admin_page',
+             start_question='self._start_question',
+             start_round2='self._start_round2',
              prototype_form='self.question.prototype_form',
              add_prototypes='self.question.add_prototypes',
              cluster_report='self.question.cluster_report',
              correct='self.question.correct',
              add_correct='self.question.add_correct',
-             start_question='self._start_question',
              analysis='self.question.analysis')
     for name,funcstr in d.items(): # create authenticated admin methods
         exec '''%s=lambda self, **kwargs:self.auth_admin(%s, **kwargs)
