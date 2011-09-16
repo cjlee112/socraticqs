@@ -391,11 +391,14 @@ class QuestionBase(object):
             doc.add_text('Choose which answer is correct:')
             doc.append(self.get_choice_form('correct', False, 0, fmt))
             doc.add_text('''<br>If none of these are correct, click here
-            to add the <A HREF="/add_correct">correct answer</A>.''')
+            to add the <A HREF="/add_correct">correct answer</A>
+            given by the instructor.''')
         else:
             doc.add_text('%2.0f%% of students got the correct answer' % p)
             doc.append(self.get_choice_form('correct', False, 0, fmt))
-            doc.add_text('Tell the students to proceed with their vote.')
+            doc.add_text('''Tell the students to proceed with their vote.
+            Finally, click here to
+            <A HREF="/analysis">analyze the results</A>.''')
             self.init_vote()
         return str(doc)
 
@@ -419,8 +422,8 @@ class QuestionBase(object):
         click here to <A HREF="/prototype_form">continue</A>.''' % n
 
     def list_categories(self, update=False):
-        if not update and self.categoriesSorted: # no need for update
-            return self.categoriesSorted
+        if not update and getattr(self, 'categoriesSorted', False):
+            return self.categoriesSorted # no need for update
         l = list(self.categories)
         l.sort()
         self.categoriesSorted = l
@@ -581,17 +584,53 @@ class QuestionBase(object):
         d1 = {}
         d2 = {}
         d3 = {}
-        for r in self.responses:
+        for r in self.responses.values():
             d1[r] = d1.get(r, 0) + 1
-            r2 = r.response2
+            r2 = getattr(r, 'response2', None)
             d2[r2] = d2.get(r2, 0) + 1
-            r3 = r.finalVote
+            r3 = getattr(r, 'finalVote', None)
             d3[r3] = d3.get(r3, 0) + 1
         return d1, d2, d3
 
-    def analysis(self):
-        pass
-
+    def analysis(self, title='Final Results'):
+        f = 100. / len(self.responses)
+        def perc(d, k):
+            return '%1.0f%%' % (d.get(k, 0) * f)
+        doc = webui.Document(title)
+        d1, d2, d3 = self.count_rounds()
+        t = webui.Table('%d Responses' % len(self.responses),
+                        ('answer','initial', 'revised', 'final'))
+        for i,category in enumerate(self.categoriesSorted):
+            a = letters[i]
+            if category == self.correctAnswer: # bold the correct answer
+                a = '<B>' + a + '</B>'
+            t.append((a, perc(d1, category), perc(d2, category),
+                      perc(d3, category)))
+        t.append(('NR', '0%', perc(d2, None), perc(d3, None)))
+        doc.append(t)
+        doc.add_text('Reasons and Critiques', 'h1')
+        for i,category in enumerate(self.categoriesSorted):
+            doc.add_text('Answer ' + letters[i], 'h2')
+            doc.add_text(str(category))
+            if self.categories[category]:
+                doc.add_text('Reasons Given for this Answer', 'h3')
+                for r in self.categories[category]:
+                    reasons = getattr(r, 'reasons', None)
+                    if reasons:
+                        doc.add_text(reasons, 'LI')
+            l = []
+            for r in self.responses.values():
+                if getattr(r, 'critiqueTarget', None) == category \
+                   and getattr(r, 'criticisms', None):
+                    l.append(r.criticisms)
+            if l:
+                doc.add_text('Critiques of this Answer', 'h3')
+                for s in l:
+                    doc.add_text(s, 'LI')
+            doc.add_text('<HR>\n')
+        doc.add_text('''Click here to go to the
+        <A HREF='/admin'>PIPS console</A>.''')
+        return str(doc)
 
 
 class QuestionChoice(QuestionBase):
@@ -917,7 +956,8 @@ class PipRoot(object):
              cluster_report='self.question.cluster_report',
              correct='self.question.correct',
              add_correct='self.question.add_correct',
-             start_question='self._start_question')
+             start_question='self._start_question',
+             analysis='self.question.analysis')
     for name,funcstr in d.items(): # create authenticated admin methods
         exec '''%s=lambda self, **kwargs:self.auth_admin(%s, **kwargs)
 %s.exposed = True''' % (name, funcstr, name)
