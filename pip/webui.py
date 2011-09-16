@@ -1,27 +1,26 @@
 
-
 class Table(list):
+    def __init__(self, caption=None, headings=None):
+        list.__init__(self)
+        self.caption = caption
+        self.headings = headings
+
     def __str__(self):
-        s='<table BORDER=1>\n'
-        try:
-            headings=self.headings
-            s+='\t<tr>'
-            for h in headings:
-                s+='\t\t<th>%s</th>\n' % h
-            s+='\t</tr>\n'
-        except AttributeError:
-            pass
+        s = '<TABLE BORDER=1>\n'
+        if self.caption:
+            s += '\t<CAPTION>%s</CAPTION>\n' % self.caption
+        if self.headings:
+            s += '\t<TR>'
+            for head in self.headings:
+                s += '<TH>%s</TH>' % head
+            s += '\t</TR>\n'
         for row in self:
-            s+='\t<tr>'
+            s += '\t<TR>'
             for col in row:
-                s+='\t\t<td>'
-                s+=str(col)
-                s+='</td>\n'
-            s+='\t</tr>\n'
-        s+='</table>\n\n'
+                s += '\t\t<TD>%s</TD>\n' % col
+            s += '\t</TR>\n'
+        s += '</TABLE>\n'
         return s
-
-
         
 class Data(list):
     def __str__(self):
@@ -188,6 +187,7 @@ def get_element_js(e):
         return get_element_jstext(e)
     else:
         raise TypeError('e must be Variable or Data!')
+
 
 class Form(list):
     def __init__(self,m,method="POST",label='Go!',**kwargs):
