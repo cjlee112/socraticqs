@@ -6,6 +6,7 @@ from coursedb import CourseDB
 from question import add_confidence_choice
 
 def redirect(path='/', body=None, delay=0):
+    'redirect browser, if desired after showing a message'
     s = '<HTML><HEAD>\n'
     s += '<meta http-equiv="Refresh" content="%d; url=%s">\n' % (delay, path)
     s += '</HEAD>\n'
@@ -15,6 +16,7 @@ def redirect(path='/', body=None, delay=0):
     return s
 
 def build_reconsider_form(title='Reconsidering your answer'):
+    'return HTML for standard form for round 2'
     doc = webui.Document(title)
     doc.add_text('''Briefly state the key points that you used to argue
     in favor of your original answer:<br>
@@ -32,9 +34,10 @@ def build_reconsider_form(title='Reconsidering your answer'):
     doc.append(form)
     return str(doc)
 
-class PipRoot(object):
-    _cp_config = {'tools.sessions.on': True}
-
+class Server(object):
+    '''provides dynamic interfaces for students and instructor.
+    Intended to be run from Python console, retaining control via the
+    console thread; the cherrypy server runs using background threads.'''
     def __init__(self, questionFile, enableMathJax=True, registerAll=False,
                  adminIP='127.0.0.1', **kwargs):
         self.enableMathJax = enableMathJax
@@ -61,6 +64,7 @@ class PipRoot(object):
             self.serve_question(self.courseDB.questions[0])
     
     def serve_question(self, question):
+        'set the question to be posed to the students'
         self.question = question
         question.courseDB = self.courseDB
         self._questionHTML = str(question)
@@ -73,6 +77,14 @@ class PipRoot(object):
         self.critique = question.critique
         self.self_critique = question.self_critique
         
+    def start(self):
+        'start cherrypy server as background thread, retaining control of main thread'
+        self.threadID = thread.start_new_thread(self.serve_forever, ())
+
+    def serve_forever(self):
+        cherrypy.quickstart(self, '/', 'cp.conf')
+
+    # student interfaces
     def index(self):
         try:
             uid = cherrypy.session['UID']
@@ -85,13 +97,6 @@ class PipRoot(object):
             return 'No question has been set!'
     index.exposed = True
 
-    def start(self):
-        self.threadID = thread.start_new_thread(self.serve_forever, ())
-
-    def serve_forever(self):
-        cherrypy.quickstart(self, '/', 'cp.conf')
-
-    # student interfaces
     def login(self, username, uid):
         username = username.lower()
         try:
