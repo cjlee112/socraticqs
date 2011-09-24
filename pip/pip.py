@@ -191,6 +191,17 @@ class Server(object):
         exec '''%s=lambda self, **kwargs:self.auth_admin(%s, **kwargs)
 %s.exposed = True''' % (name, funcstr, name)
     del d # don't leave this cluttering the class attributes
+
+    # test aurigma up support
+    def aurigma_up(self, uid, PackageFileCount, **kwargs):
+        print 'aurigma_up: uid', uid
+        for i in range(int(PackageFileCount)):
+            filename = kwargs['SourceName_%d' % i]
+            print 'Writing', filename
+            ofile = open(filename, 'wb')
+            ofile.write(kwargs['File0_%d' % i].file.read())
+            ofile.close()
+    aurigma_up.exposed = True
         
 def test(title='Monty Hall',
          text=r'''The probability of winning by switching your choice is:
