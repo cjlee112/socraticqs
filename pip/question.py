@@ -461,10 +461,11 @@ class QuestionBase(object):
 
 
 class QuestionChoice(QuestionBase):
-    def build_form(self, correctChoice, choices):
+    def build_form(self, explanation, correctChoice, choices):
         'ask the user to choose an option'
         self.correctAnswer = MultiChoiceResponse(0, self, 0, int(correctChoice))
         self.choices = choices
+        self.explanation = explanation
         form = webui.Form('answer')
         l = []
         for i,s in enumerate(choices):

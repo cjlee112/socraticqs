@@ -186,7 +186,7 @@ class CourseDB(object):
                       (t[0], t[1], date.today().isoformat()))
             klass = questionTypes[t[0]]
             if t[0] == 'mc':
-                q = klass(t[1], t[2], t[3], t[4:]) # multiple choice answer
+                q = klass(t[1], t[2], t[3], t[4], t[5:]) # multiple choice answer
             else:
                 q = klass(*t[1:])
             q.id = c.lastrowid
