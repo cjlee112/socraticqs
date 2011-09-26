@@ -45,6 +45,7 @@ class CourseDB(object):
             cluster_id integer,
             is_correct integer,
             answer text,
+            attach_path text,
             confidence integer,
             submit_time integer,
             reasons text,
@@ -195,7 +196,8 @@ class CourseDB(object):
 
     def save_responses(self, question):
         'save all responses to this question to the database'
-        def get_id(resp): # return None or the object's db id
+        def get_id(r, attr): # return None or the object's db id
+            resp = getattr(r, attr, None)
             if resp:
                 return resp.uid
         conn = sqlite3.connect(self.dbfile)
@@ -204,14 +206,19 @@ class CourseDB(object):
             for r in question.responses.values(): # insert rows
                 dt = datetime.fromtimestamp(r.timestamp)
                 c.execute('''insert into responses values
-                (NULL,?,?,?,?,?,?,datetime(?),?,?,?,?,?,?,?)''',
-                          (r.uid, question.id, get_id(r.prototype),
+                (NULL,?,?,?,?,?,?,?,datetime(?),?,?,?,?,?,?,?)''',
+                          (r.uid, question.id, get_id(r, 'prototype'),
                            question.is_correct(r),
-                           r.get_answer(), r.confidence,
-                           dt.isoformat().split('.')[0], r.reasons,
-                           get_id(r.response2), r.confidence2,
-                           get_id(r.finalVote), r.finalConfidence,
-                           get_id(r.critiqueTarget), r.criticisms))
+                           r.get_answer(), getattr(r, 'path', None),
+                           r.confidence,
+                           dt.isoformat().split('.')[0],
+                           getattr(r, 'reasons', None),
+                           get_id(r, 'response2'),
+                           getattr(r, 'confidence2', None),
+                           get_id(r, 'finalVote'),
+                           getattr(r, 'finalConfidence', None),
+                           get_id(r, 'critiqueTarget'),
+                           getattr(r, 'criticisms', None)))
                 r.id = c.lastrowid # record its primary key
             conn.commit()
         finally:

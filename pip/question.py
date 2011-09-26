@@ -27,7 +27,7 @@ class Response(object):
         self.uid = uid
         self.question = question
         self.timestamp = time.time()
-        self.confidence = confidence
+        self.confidence = int(confidence)
         self.save_data(*args, **kwargs)
 
     def save_data(self, **kwargs):
@@ -74,7 +74,7 @@ class ImageResponse(ClusteredResponse):
         self.text = text
         self.imageDir = imageDir
     def get_answer(self):
-        return self.path
+        return self.text
         ## ifile = open(os.path.join(self.imageDir, self.path), 'rb')
         ## data = ifile.read()
         ## ifile.close()
@@ -90,11 +90,14 @@ class ImageResponse(ClusteredResponse):
 class QuestionBase(object):
     def __init__(self, title, text, *args, **kwargs):
         self.title = title
+        self.text = text
         self.answered = set()
         doc = webui.Document(title)
         self.doc = doc
         doc.add_text(text)
-        doc.append(self.build_form(*args, **kwargs))
+        form = webui.Form('answer')
+        self.build_form(form, *args, **kwargs)
+        doc.append(form)
         self.responses = {}
         self.categories = {}
 
@@ -124,7 +127,7 @@ class QuestionBase(object):
         else:
             response.response2 = response
         response.reasons = reasons
-        response.confidence2 = confidence
+        response.confidence2 = int(confidence)
         self.alert_if_done()
         return '''Thanks! When your instructor asks you to, please click here to
             continue to <A HREF="%s">%s</A>.''' % (self._afterURL,
@@ -232,7 +235,7 @@ class QuestionBase(object):
         response = self.responses[uid]
         category = self.categoriesSorted[int(choice)]
         response.finalVote = category
-        response.finalConfidence = confidence
+        response.finalConfidence = int(confidence)
         if category != response:
             return self._selfCritiqueHTML
         else:
@@ -389,7 +392,10 @@ class QuestionBase(object):
         response.prototype = category
 
     def is_correct(self, response):
-        return response == self.correctAnswer
+        try:
+            return response == self.correctAnswer
+        except AttributeError:
+            return None
 
     def init_vote(self):
         self._voteHTML = self.build_vote_form()
@@ -453,27 +459,32 @@ class QuestionBase(object):
     def alert_if_done(self, initial=False):
         self.answered.add(cherrypy.session['UID'])
         if initial:
-            if len(self.answered) == len(self.courseDB.logins):
-                subprocess.call('sh beep.sh &', shell=True)
+            try:
+                if len(self.answered) == len(self.courseDB.logins):
+                    subprocess.call('sh beep.sh &', shell=True)
+            except AttributeError:
+                pass
         else:
             if len(self.answered) == len(self.responses):
                 subprocess.call('sh beep.sh &', shell=True)
 
 
 class QuestionChoice(QuestionBase):
-    def build_form(self, explanation, correctChoice, choices):
+    def build_form(self, form, explanation, correctChoice, choices):
         'ask the user to choose an option'
         self.correctAnswer = MultiChoiceResponse(0, self, 0, int(correctChoice))
         self.choices = choices
         self.explanation = explanation
-        form = webui.Form('answer')
+        self._append_to_form(form)
+
+    def _append_to_form(self, form, suffix='', conf=True):
         l = []
-        for i,s in enumerate(choices):
+        for i,s in enumerate(self.choices):
             l.append((i, '<B>%s</B>. %s' % (letters[i], s)))
-        form.append(webui.RadioSelection('choice', l))
-        add_confidence_choice(form)
+        form.append(webui.RadioSelection('choice' + suffix, l))
+        if conf:
+            add_confidence_choice(form)
         form.append('<br>\n')
-        return form
 
     def answer(self, choice=None, confidence=None):
         if missing_params(choice, confidence):
@@ -507,7 +518,7 @@ class QuestionChoice(QuestionBase):
     _afterText = 'the final vote'
         
 class QuestionText(QuestionBase):
-    def build_form(self, correctText,
+    def build_form(self, form, correctText,
                    instructions=r'''(Briefly state your answer to the question
     in the box below.  You may enter latex equations by enclosing them in
     pairs of dollar signs, e.g. \$\$c^2=a^2+b^2\$\$).<br>
@@ -516,11 +527,13 @@ class QuestionText(QuestionBase):
         self._correctText = correctText
         self.maxview = maxview
         self.doc.append(webui.Data(instructions))
-        form = webui.Form('answer')
-        form.append(webui.Textarea('answer'))
-        add_confidence_choice(form)
+        self._append_to_form(form)
+
+    def _append_to_form(self, form, suffix='', conf=True):
+        form.append(webui.Textarea('answer' + suffix))
+        if conf:
+            add_confidence_choice(form)
         form.append('<br>\n')
-        return form
 
     def answer(self, answer=None, confidence=None):
         'receive text answer from user'
@@ -544,24 +557,26 @@ class QuestionText(QuestionBase):
     _afterText = 'categorize your answer'
 
 class QuestionUpload(QuestionBase):
-    def build_form(self, correctFile, stem='q',
-                   instructions='''(write your answer on a sheet of paper, take a picture,
-        and upload the picture using the button below).<br>\n''',
+    def build_form(self, form, correctFile, stem='q',
                    imageDir='static/images', maxview=10):
         'ask the user to upload an image file'
         self._correctFile = correctFile
         self.maxview = maxview
         self.stem = stem
         self.imageDir = imageDir
-        self.doc.append(webui.Data(instructions))
-        form = webui.Form('answer')
-        form.append(webui.Upload('image'))
+        self._append_to_form(form)
+
+    def _append_to_form(self, form, suffix='', conf=True,
+                        instructions='''(write your answer on a sheet of paper, take a picture,
+        and upload the picture using the button below).<br>\n'''):
+        form.append(instructions)
+        form.append(webui.Upload('image' + suffix))
         form.append('''<br>Optionally, you may enter a text answer, e.g. if
         you cannot submit your answer as an image:<br>''')
-        form.append(webui.Textarea('answer2'))
-        add_confidence_choice(form)
+        form.append(webui.Textarea('answer2' + suffix))
+        if conf:
+            add_confidence_choice(form)
         form.append('<br>\n')
-        return form
 
     def answer(self, image=None, answer2='', confidence=None):
         'receive uploaded image file from user'
@@ -598,4 +613,31 @@ questionTypes = dict(mc=QuestionChoice,
                      text=QuestionText,
                      image=QuestionUpload)
 
+class QuestionSet(QuestionBase):
+    'creates a single form that wraps multiple questions'
+    def build_form(self, form, questions):
+        self.questions = questions
+        for i,q in enumerate(questions):
+            form.append('<HR>\n%d. %s<BR>\n' % (i + 1, q.text))
+            q._append_to_form(form, '_%d' % i, False)
 
+    def answer(self, **kwargs):
+        d = {}
+        for attr in kwargs: # sort arguments for each question
+            i = int(attr.split('_')[-1])
+            d.setdefault(i, []).append(attr)
+        for i,q in enumerate(self.questions):
+            d2 = {}
+            for attr in d.get(i, ()): # copy kwargs for this question
+                k = attr.split('_')[0]
+                d2[k] = kwargs[attr]
+            r = q.answer(confidence=0, **d2)
+            if r == _missing_arg_msg: # student left something out...
+                return r
+        return '''Thanks for answering! When your instructor asks you to, please click here to
+        <A HREF="/">continue</A>.'''
+    answer.exposed = True
+            
+    def save_responses(self):
+        for q in self.questions:
+            self.courseDB.save_responses(q)
