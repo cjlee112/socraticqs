@@ -186,7 +186,8 @@ class Server(object):
              cluster_report='self.question.cluster_report',
              correct='self.question.correct',
              add_correct='self.question.add_correct',
-             analysis='self.question.analysis')
+             analysis='self.question.analysis',
+             save_responses='self.question.save_responses')
     for name,funcstr in d.items(): # create authenticated admin methods
         exec '''%s=lambda self, **kwargs:self.auth_admin(%s, **kwargs)
 %s.exposed = True''' % (name, funcstr, name)

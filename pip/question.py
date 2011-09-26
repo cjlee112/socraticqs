@@ -452,9 +452,14 @@ class QuestionBase(object):
                 for s in l:
                     doc.add_text(s, 'LI')
             doc.add_text('<HR>\n')
-        doc.add_text('''Click here to go to the
-        <A HREF='/admin'>PIPS console</A>.''')
+        doc.add_text('''Click here to <A HREF="/save_responses">save 
+        all student responses to the database</A>.''')
         return str(doc)
+
+    def save_responses(self):
+        n = self.courseDB.save_responses(self)
+        return '''Saved %d responses.  Click here to go to the
+        <A HREF='/admin'>PIPS console</A>.''' % n
 
     def alert_if_done(self, initial=False):
         self.answered.add(cherrypy.session['UID'])
@@ -639,5 +644,9 @@ class QuestionSet(QuestionBase):
     answer.exposed = True
             
     def save_responses(self):
+        n = 0
         for q in self.questions:
-            self.courseDB.save_responses(q)
+            n += self.courseDB.save_responses(q)
+        return '''Saved %d responses total for %d questions.
+        Click here to go to the <A HREF='/admin'>PIPS console</A>.''' \
+        % (n, len(self.questions))

@@ -202,6 +202,7 @@ class CourseDB(object):
                 return resp.uid
         conn = sqlite3.connect(self.dbfile)
         c = conn.cursor()
+        n = 0
         try:
             for r in question.responses.values(): # insert rows
                 dt = datetime.fromtimestamp(r.timestamp)
@@ -221,7 +222,9 @@ class CourseDB(object):
                            getattr(r, 'criticisms', None)))
                 r.id = c.lastrowid # record its primary key
             conn.commit()
+            n = len(question.responses)
         finally:
             c.close()
             conn.close()
+        return n # number of saved responses
 
