@@ -26,9 +26,10 @@ def build_reconsider_form(title='Reconsidering your answer'):
     form.append('<br>\n')
     d = dict(unchanged='I still prefer my original answer.',
              switched="I've decided my partner's answer is better (enter his/her name below).")
-    form.append(webui.RadioSelection('status', d.items()))
+    form.append(webui.RadioSelection('status', d.items(),
+                                     selected='unchanged'))
     add_confidence_choice(form)
-    form.append("<br>\nYour partner's username:")
+    form.append("<br>\nYour partner's username (only needed if you prefer their answer):")
     form.append(webui.Input('partner'))
     form.append('<br>\n')
     doc.append(form)
@@ -95,7 +96,9 @@ class Server(object):
         try:
             return self._questionHTML
         except AttributeError:
-            return 'No question has been set!'
+            return """The instructor has not yet assigned a question.
+            Please click your browser's refresh button when your
+            instructor tells you to load the first question."""
     index.exposed = True
 
     def login_form(self):
@@ -107,7 +110,8 @@ class Server(object):
         try:
             uid = int(uid)
         except ValueError:
-            return 'Your UID must be an integer! <A HREF="/">Continue</A>'
+            return """Your UID must be an integer! Please click your
+            browser's Back button and correct your UID."""
         try:
             self.courseDB.authenticate(uid, username)
         except ValueError, e:
