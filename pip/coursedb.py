@@ -4,6 +4,8 @@ import sqlite3
 import csv
 from datetime import datetime, date
 from question import questionTypes
+import random
+import Queue
 
 class BadUIDError(ValueError):
     pass
@@ -19,9 +21,14 @@ class Student(object):
 
 class CourseDB(object):
     def __init__(self, questionFile=None, studentFile=None,
-                 dbfile='course.db', createSchema=False):
+                 dbfile='course.db', createSchema=False, nmax=1000):
         self.dbfile = dbfile
         self.logins = set()
+        codes = range(nmax)
+        random.shuffle(codes) # short but random unique IDs for students
+        self.idQueue = Queue.Queue() # thread-safe container
+        for i in codes: # each student will get one ID from the container
+            self.idQueue.put(i)
         if not os.path.exists(dbfile):
             createSchema = True
         conn = sqlite3.connect(dbfile)
@@ -72,6 +79,7 @@ class CourseDB(object):
         users = {}
         for t in c.fetchall():
             student = Student(*t)
+            student.code = self.idQueue.get() # get a unique random code
             d[student.uid] = student
             if student.username:
                 users[student.username] = student
@@ -161,6 +169,7 @@ class CourseDB(object):
                                  (uid, username, fullname,
                                   date.today().isoformat()))
         student = Student(uid, fullname, username)
+        student.code = self.idQueue.get() # get a unique random code
         self.students[uid] = student
         self.userdict[username] = student
         return 'Added user ' + username
@@ -191,6 +200,7 @@ class CourseDB(object):
             else:
                 q = klass(*t[1:])
             q.id = c.lastrowid
+            q.courseDB = self
             l.append(q)
         self.questions = l
 

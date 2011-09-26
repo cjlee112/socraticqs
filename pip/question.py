@@ -590,9 +590,14 @@ class QuestionUpload(QuestionBase):
             return _missing_arg_msg
         uid = cherrypy.session['UID']
         if image.file:
-            fname = self.stem + str(len(self.responses)) + '_' + image.filename
+            studentCode = self.courseDB.students[uid].code
+            fname = 'q%d_%d_%s' % (self.id, studentCode, image.filename)
             ifile = open(os.path.join(self.imageDir, fname), 'wb')
-            ifile.write(image.file.read())
+            while True:
+                data = image.file.read(8192)
+                if not data:
+                    break
+                ifile.write(data)
             ifile.close()
         else:
             fname = None
