@@ -573,7 +573,8 @@ class QuestionUpload(QuestionBase):
 
     def _append_to_form(self, form, suffix='', conf=True,
                         instructions='''(write your answer on a sheet of paper, take a picture,
-        and upload the picture using the button below).<br>\n'''):
+        and upload the picture using the button below.  Click here for
+        <A HREF="/images/help.html">some helpful instructions</A>).<br>\n'''):
         form.append(instructions)
         form.append(webui.Upload('image' + suffix))
         form.append('''<br>Optionally, you may enter a text answer, e.g. if
