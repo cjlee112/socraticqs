@@ -54,10 +54,8 @@ class Server(object):
         self.adminIP = adminIP
         self.courseDB = CourseDB(questionFile, **kwargs)
         self._registerHTML = login.register_form()
-        if registerAll:
-            self._loginHTML = self._registerHTML
-        else:
-            self._loginHTML = login.login_form()
+        self.registerAll = registerAll
+        self._loginHTML = login.login_form()
         self._reloadHTML = redirect()
         self._reconsiderHTML = build_reconsider_form()
         if questionFile:
@@ -89,13 +87,20 @@ class Server(object):
         try:
             uid = cherrypy.session['UID']
         except KeyError:
-            return self._loginHTML
+            if self.registerAll:
+                return self._registerHTML
+            else:
+                return self._loginHTML
             
         try:
             return self._questionHTML
         except AttributeError:
             return 'No question has been set!'
     index.exposed = True
+
+    def login_form(self):
+        return self._loginHTML
+    login_form.exposed = True
 
     def login(self, username, uid):
         username = username.lower()

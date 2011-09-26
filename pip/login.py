@@ -19,7 +19,11 @@ def login_form(action='login',
 
 def register_form(action='register',
                   text='''Please register by choosing a username, and
-                  entering your full name and UCLA ID:<br>\n'''):
+                  entering your full name and UCLA ID:<br>\n''',
+                  loginText='''<br>
+                  If you have already registered, click here to
+                  <A HREF="/login_form">login</A>.
+                  '''):
     doc = webui.Document('Register')
     doc.add_text(text)
     form = webui.Form(action)
@@ -32,5 +36,6 @@ def register_form(action='register',
     form.append(webui.Data('<br>\nRe-enter UID:'))
     form.append(webui.Input('uid2', 'password', size=10))
     doc.append(form)
+    doc.add_text(loginText)
     return str(doc)
 
