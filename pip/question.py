@@ -66,9 +66,15 @@ class MultiChoiceResponse(Response):
         return '<B>%s</B>. %s<br>\n' % (letters[self.choice],
                                        self.question.choices[self.choice])
     def __cmp__(self, other):
-        return cmp(self.choice, other.choice)
+        try:
+            return cmp(self.choice, other.choice)
+        except AttributeError:
+            return cmp(id(self), id(other))
     def __hash__(self):
-        return hash(self.choice)
+        try:
+            return hash(self.choice)
+        except AttributeError:
+            return id(self)
 
 class ClusteredResponse(Response):
     'a pair matches if they have the same prototype'
@@ -92,10 +98,11 @@ class TextResponse(ClusteredResponse):
         return self.text + '<br>\n'
 
 class ImageResponse(ClusteredResponse):
-    def save_data(self, path, text, imageDir):
+    def save_data(self, path, text, imageDir, hideMe=False):
         self.path = path
         self.text = text
         self.imageDir = imageDir
+        self.hideMe = hideMe
     def get_answer(self):
         return self.text
         ## ifile = open(os.path.join(self.imageDir, self.path), 'rb')
@@ -104,7 +111,9 @@ class ImageResponse(ClusteredResponse):
         ## return data
     def __str__(self):
         s = ''
-        if self.path:
+        if self.hideMe:
+            s += self.hideMe + '<br>\n'
+        elif self.path:
             s += '<IMG SRC="/images/%s"><br>\n' % self.path
         if self.text:
             s += self.text + '<br>\n'
@@ -360,7 +369,11 @@ class QuestionBase(object):
     def critique(self, uid, criticisms=None, choice=None, monitor=None):
         if missing_params(criticisms, choice):
             return _missing_arg_msg
-        category = self.categoriesSorted[int(choice)]
+        try:
+            category = self.categoriesSorted[int(choice)]
+        except (AttributeError,IndexError,ValueError):
+            return 'Please go back and resubmit your critique when your instructor says to' \
+                   + self._navHTML
         return self.save_critique(uid, criticisms, category, monitor)
 
     def build_self_critique_form(self, title='Critique your original answer',
@@ -400,6 +413,7 @@ class QuestionBase(object):
     # instructor interfaces
     def prototype_form(self, offset=0, maxview=None,
                        title='Categorize Responses'):
+        offset = int(offset)
         unclustered = self.count_unclustered()
         if unclustered == 0:
             return self.cluster_report()
@@ -418,6 +432,7 @@ class QuestionBase(object):
                 maxview = self.maxview
             except AttributeError:
                 maxview = 10
+        maxview = int(maxview)
         if maxview and len(l) > maxview:
             l = l[:maxview]
         form = webui.Form('add_prototypes')
@@ -694,6 +709,7 @@ class QuestionText(QuestionBase):
     _afterText = 'categorize your answer'
 
 class QuestionUpload(QuestionBase):
+    maxSize = 500000 # don't show images bigger than 500kb
     def build_form(self, form, correctFile, stem='q',
                    imageDir='static/images', maxview=10):
         'ask the user to upload an image file'
@@ -724,6 +740,7 @@ class QuestionUpload(QuestionBase):
         if confidence is None or ((not image or not image.file)
                                   and not answer2):
             return _missing_arg_msg
+        size = 0
         if image.file:
             studentCode = self.courseDB.students[uid].code
             fname = 'q%d_%d_%s' % (self.id, studentCode, image.filename)
@@ -733,11 +750,16 @@ class QuestionUpload(QuestionBase):
                 if not data:
                     break
                 ifile.write(data)
+                size += 8192
             ifile.close()
         else:
             fname = None
+        if size > self.maxSize:
+            hideMe = '(image too big to display)'
+        else:
+            hideMe = False
         response = ImageResponse(uid, self, confidence, fname, answer2,
-                                 self.imageDir)
+                                 self.imageDir, hideMe)
         self.responses[uid] = response
         self.answer_monitor(monitor)
         ## self.alert_if_done(True)
