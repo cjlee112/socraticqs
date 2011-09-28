@@ -3,7 +3,7 @@ import webui
 import thread
 import login
 from coursedb import CourseDB
-from question import add_confidence_choice
+from monitor import TtyMonitor
 
 def redirect(path='/', body=None, delay=0):
     'redirect browser, if desired after showing a message'
@@ -14,26 +14,6 @@ def redirect(path='/', body=None, delay=0):
         s += '<BODY>%s</BODY>\n' % body
     s += '</HTML>\n'
     return s
-
-def build_reconsider_form(title='Reconsidering your answer'):
-    'return HTML for standard form for round 2'
-    doc = webui.Document(title)
-    doc.add_text('''Briefly state the key points that you used to argue
-    in favor of your original answer:<br>
-    ''')
-    form = webui.Form('reconsider')
-    form.append(webui.Textarea('reasons'))
-    form.append('<br>\n')
-    d = dict(unchanged='I still prefer my original answer.',
-             switched="I've decided my partner's answer is better (enter his/her name below).")
-    form.append(webui.RadioSelection('status', d.items(),
-                                     selected='unchanged'))
-    add_confidence_choice(form)
-    form.append("<br>\nYour partner's username (only needed if you prefer their answer):")
-    form.append(webui.Input('partner'))
-    form.append('<br>\n')
-    doc.append(form)
-    return str(doc)
 
 class Server(object):
     '''provides dynamic interfaces for students and instructor.
@@ -58,23 +38,16 @@ class Server(object):
         self.registerAll = registerAll
         self._loginHTML = login.login_form()
         self._reloadHTML = redirect()
-        self._reconsiderHTML = build_reconsider_form()
+        self.questions = {}
         if questionFile:
             self.serve_question(self.courseDB.questions[0])
+        self.monitor = TtyMonitor()
     
     def serve_question(self, question):
         'set the question to be posed to the students'
         self.question = question
         question.courseDB = self.courseDB
-        self._questionHTML = str(question)
-        self.answer = question.answer
-        self.reconsider = question.reconsider
-        self.cluster_form = question.cluster_form
-        self.cluster = question.cluster
-        self.vote_form = question.vote_form
-        self.vote = question.vote
-        self.critique = question.critique
-        self.self_critique = question.self_critique
+        self.questions[question.id] = question # add to our lookup
         
     def start(self):
         'start cherrypy server as background thread, retaining control of main thread'
@@ -94,7 +67,7 @@ class Server(object):
                 return self._loginHTML
             
         try:
-            return self._questionHTML
+            return self.question._viewHTML['answer']
         except AttributeError:
             return """The instructor has not yet assigned a question.
             Please click your browser's refresh button when your
@@ -155,6 +128,48 @@ class Server(object):
         return self._reconsiderHTML
     reconsider_form.exposed = True
 
+    def view(self, stage=None, qid='', **kwargs):
+        try:
+            uid = cherrypy.session['UID']
+        except KeyError:
+            return '''You are not logged in!  Click here to
+            <A HREF="/login">login</A>.'''
+        try:
+            q = self.questions[int(qid)]
+        except (ValueError,KeyError):
+            print 'ERROR: Unknown qid:', qid
+            return '''An error occurred.  Please either try to resubmit your
+            form, or skip to the next step.'''
+        try:
+            return q._viewHTML[stage] # just return stored HTML
+        except KeyError:
+            if stage == 'cluster':
+                return q.cluster_form(uid)
+            print 'ERROR: Unknown stage:', stage
+            return '''An error occurred.  Please skip to the next step.'''
+    view.exposed = True
+
+    def submit(self, stage=None, qid='', **kwargs):
+        try:
+            uid = cherrypy.session['UID']
+        except KeyError:
+            return '''You are not logged in!  Click here to
+            <A HREF="/login">login</A>.'''
+        try:
+            q = self.questions[int(qid)]
+        except (ValueError,KeyError):
+            print 'ERROR: Unknown qid:', qid
+            return '''An error occurred.  Please either try to resubmit your
+            form, or skip to the next step.'''
+        try:
+            action = q.submitStages[stage]
+        except KeyError:
+            print 'ERROR: Unknown stage:', stage
+            return '''An error occurred.  Please either try to resubmit your
+            form, or skip to the next step.'''
+        return action(uid, monitor=self.monitor, **kwargs)
+    submit.exposed = True
+
     # instructor interfaces
     def auth_admin(self, func, **kwargs):
         if cherrypy.request.remote.ip == self.adminIP:
@@ -180,7 +195,6 @@ class Server(object):
         <A HREF="/start_round2">start round 2</A>.''' % question.title
 
     def _start_round2(self, **kwargs):
-        self.question.answered.clear()
         if self.question.count_unclustered(): # need to do clustering
             return self.question.prototype_form(**kwargs)
         return '''Please wait until the students are done with

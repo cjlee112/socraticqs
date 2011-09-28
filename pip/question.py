@@ -20,6 +20,29 @@ def add_confidence_choice(form, levels=('Just guessing', 'Not quite sure',
     form.append('<br>\nHow confident are you in your answer?<br>\n')
     form.append(webui.RadioSelection('confidence', list(enumerate(levels))))
     
+def build_reconsider_form(qid, bottom='', title='Reconsidering your answer'):
+    'return HTML for standard form for round 2'
+    doc = webui.Document(title)
+    doc.add_text('''Briefly state the key points that you used to argue
+    in favor of your original answer:<br>
+    ''')
+    form = webui.Form('submit')
+    form.append(webui.Input('qid', 'hidden', str(qid)))
+    form.append(webui.Input('stage', 'hidden', 'reconsider'))
+    form.append(webui.Textarea('reasons'))
+    form.append('<br>\n')
+    d = dict(unchanged='I still prefer my original answer.',
+             switched="I've decided my partner's answer is better (enter his/her name below).")
+    form.append(webui.RadioSelection('status', d.items(),
+                                     selected='unchanged'))
+    add_confidence_choice(form)
+    form.append("<br>\nYour partner's username (only needed if you prefer their answer):")
+    form.append(webui.Input('partner'))
+    form.append('<br>\n')
+    doc.append(form)
+    doc.add_text(bottom)
+    return str(doc)
+
 
 class Response(object):
     'subclass this to supply different storage and representation methods'
@@ -88,73 +111,146 @@ class ImageResponse(ClusteredResponse):
         return s
 
 class QuestionBase(object):
-    def __init__(self, title, text, *args, **kwargs):
+    def __init__(self, questionID, title, text, *args, **kwargs):
+        self.id = questionID
         self.title = title
         self.text = text
-        self.answered = set()
+        for attr in ('hasReasons', 'isClustered', 'noMatch', 'hasFinalVote',
+                     'hasCritique'):
+            setattr(self, attr, set()) # initialize answer counters
         doc = webui.Document(title)
         self.doc = doc
         doc.add_text(text)
-        form = webui.Form('answer')
+        form = webui.Form('submit')
+        form.append(webui.Input('qid', 'hidden', str(self.id)))
+        form.append(webui.Input('stage', 'hidden', 'answer'))
         self.build_form(form, *args, **kwargs)
         doc.append(form)
+        doc.add_text(self._navHTML)
         self.responses = {}
         self.categories = {}
+        d = {}
+        for attr in self._stages: # initialize submission action dict
+            d[attr] = getattr(self, attr)
+        self.submitStages = d
+        self._viewHTML = {
+            'answer': str(doc),
+            'reconsider': build_reconsider_form(questionID, self._navHTML),
+            'vote': '''Sorry, not all answers have been categorized yet.
+            Please wait until your instructor asks you to click here
+            to <A HREF="%s">continue</A>.%s'''
+            % (self.get_url('vote'), self._navHTML),
+            'critique': 'Sorry, we are not yet ready to critique answers.'
+            + self._navHTML,
+            'self_critique': 'Sorry, we are not yet ready to critique answers.'
+            + self._navHTML
+            }
+        self._clusterFormHTML = \
+            '''No categories have yet been added.
+            When your instructor asks you to, please click here to
+            continue to <A HREF="%s">categorize your answer</A>.%s''' \
+            % (self.get_url('cluster'), self._navHTML)
+        self._matchedHTML = \
+            '''Your answer already matches a category.
+            When your instructor asks you to, please click here to
+            continue to the <A HREF="%s">final vote</A>.%s''' \
+            % (self.get_url('vote'), self._navHTML)
+
+
+    _stages = ('answer', 'reconsider', 'cluster', 'vote', 'critique',
+               'self_critique')
 
     def __str__(self):
         return str(self.doc)
 
+    # status reporting functions
+    def answer_monitor(self, monitor):
+        if monitor:
+            monitor.message('answers: %d of %d total'
+                            % (len(self.responses), len(self.courseDB.logins)))
+    def cluster_monitor(self, monitor):
+        if monitor:
+            monitor.message('clustered: %d, %d NOT, of %d total' 
+                            % (len(self.isClustered), len(self.noMatch),
+                               len(self.responses)))
+
     # student interfaces
-    def reconsider(self, reasons=None, status=None, confidence=None,
-                   partner=None):
-        if missing_params(reasons, status, confidence, partner) or not reasons:
+    def get_url(self, stage, action='view'):
+        return '/%s?qid=%d&stage=%s' % (action, self.id, stage)
+
+    def nav_html(self, cluster=True):
+        s = '''<HR>
+        <A HREF="/">START</A> &gt
+        <A HREF="%s">DISCUSS</A> &gt
+        ''' % self.get_url('reconsider')
+        if cluster:
+            s += '<A HREF="%s">CATEGORIZE</A> &gt' % self.get_url('cluster')
+        s += '''
+        <A HREF="%s">VOTE</A> &gt
+        <A HREF="%s">CRITIQUE</A>
+        ''' % (self.get_url('vote'), self.get_url('critique'))
+        return s
+    
+    def _no_response_msg(self):
+        msg = '''Sorry, you first need to submit an answer
+        to this question, because I can find no record of your
+        answer.  Please click here to
+        <A HREF="%s">continue</A>.''' % self.get_url('answer')
+        return msg + self._navHTML
+
+    def reconsider(self, uid, reasons=None, status=None, confidence=None,
+                   partner=None, monitor=None):
+        if missing_params(status, confidence, partner) or not reasons:
             return _missing_arg_msg
-        uid = cherrypy.session['UID']
-        response = self.responses[uid]
+        try:
+            response = self.responses[uid]
+        except KeyError:
+            return self._no_response_msg()
         if status == 'switched':
             try:
                 partnerUID = self.courseDB.userdict[partner.lower()].uid
             except KeyError:
                 return """Sorry, the username you entered for your partner
                 does not exist.  Please click your browser's back button
-                to re-enter it!"""
+                to re-enter it!""" + self._navHTML
             try:
                 response.response2 = self.responses[partnerUID]
             except KeyError:
                 return """Sorry, that username does not appear to
                 have entered an answer!  Tell them to enter their answer, then
-                click your browser's back button to resubmit your form."""
+                click your browser's back button to resubmit your form.""" \
+                + self._navHTML
         else:
             response.response2 = response
         response.reasons = reasons
         response.confidence2 = int(confidence)
-        self.alert_if_done()
+        self.hasReasons.add(uid)
+        if monitor:
+            monitor.message('recons: %d of %d total'
+                            % (len(self.hasReasons), len(self.responses)))
+        ## self.alert_if_done()
         return '''Thanks! When your instructor asks you to, please click here to
-            continue to <A HREF="%s">%s</A>.''' % (self._afterURL,
-                                                   self._afterText)
-    reconsider.exposed = True
+            continue to <A HREF="%s">%s</A>.%s''' \
+            % (self._afterURL, self._afterText, self._navHTML)
 
-    def cluster_form(self):
-        uid = cherrypy.session['UID']
-        response = self.responses[uid]
-        if response in self.categories:
-            return '''Your answer already matches a category.
-            When your instructor asks you to, please click here to
-            continue to the <A HREF="/vote_form">final vote</A>.'''
+    def cluster_form(self, uid):
         try:
+            response = self.responses[uid]
+        except KeyError:
+            return self._no_response_msg()
+        if response in self.categories:
+            return self._matchedHTML
+        else:
             return self._clusterFormHTML
-        except AttributeError:
-            return '''No categories have yet been added.
-            When your instructor asks you to, please click here to
-            continue to <A HREF="/cluster_form">categorize your answer</A>.'''
-    cluster_form.exposed = True
 
     def build_cluster_form(self, title='Cluster Your Answer'):
         doc = webui.Document(title)
         doc.add_text('''Either choose the answer that basically matches
         your original answer, or choose <B>None of the Above</B><br>
         ''')
-        form = webui.Form('cluster')
+        form = webui.Form('submit')
+        form.append(webui.Input('qid', 'hidden', str(self.id)))
+        form.append(webui.Input('stage', 'hidden', 'cluster'))
         l = []
         for i,r in enumerate(self.list_categories()):
             l.append((i, str(r)))
@@ -162,22 +258,34 @@ class QuestionBase(object):
         form.append(webui.RadioSelection('match', l))
         form.append('<br>\n')
         doc.append(form)
+        doc.add_text(self._navHTML)
         return str(doc)
 
-    def cluster(self, match=None):
+    def cluster(self, uid, match=None, monitor=None):
         if missing_params(match):
             return _missing_arg_msg
-        uid = cherrypy.session['UID']
         if match == 'none':
+            self.noMatch.add(uid)
+            self.cluster_monitor(monitor)
             return '''OK.  Hopefully we can cluster your answer in the next
             round.  When your instructor asks you to, please click here to
-            continue to the <A HREF="/cluster_form">next clustering round</A>.'''
-        response = self.responses[uid]
+            continue to the <A HREF="%s">next clustering round</A>.%s''' \
+            % (self.get_url('cluster'), self._navHTML)
+        try:
+            response = self.responses[uid]
+        except KeyError:
+            return self._no_response_msg()
+        if hasattr(response, 'prototype'):
+            return '''Sorry, but your answer has already been categorized!
+            When your instructor asks you to, please click here to
+            continue to the <A HREF="%s">final vote</A>.%s''' \
+            % (self.get_url('vote'), self._navHTML)
         category = self.categoriesSorted[int(match)]
         self.set_prototype(response, category)
+        self.cluster_monitor(monitor)
         return '''Thanks! When your instructor asks you to, please click here to
-            continue to the <A HREF="/vote_form">final vote</A>.'''
-    cluster.exposed = True
+            continue to the <A HREF="%s">final vote</A>.%s''' \
+            % (self.get_url('vote'), self._navHTML)
 
     def build_vote_form(self, form=None, title='Vote for the best answer',
                         text='Which of the following answers do you think is correct?<br>\n'):
@@ -186,11 +294,14 @@ class QuestionBase(object):
         if form is None:
             form = self.get_choice_form()
         doc.append(form)
+        doc.add_text(self._navHTML)
         return str(doc)
 
     def get_choice_form(self, action='vote', confidenceChoice=True,
                         maxreasons=2, fmt='%(answer)s', separator='<hr>\n'):
-        form = webui.Form(action)
+        form = webui.Form('submit')
+        form.append(webui.Input('qid', 'hidden', str(self.id)))
+        form.append(webui.Input('stage', 'hidden', action))
         l = []
         for i,category in enumerate(self.list_categories()):
             responses = self.categories.get(category, ())
@@ -219,28 +330,24 @@ class QuestionBase(object):
         form.append('<br>\n')
         return form
 
-    def vote_form(self):
-        try:
-            return self._voteHTML
-        except AttributeError:
-            return '''Sorry, not all answers have been categorized yet.
-            Please wait until your instructor asks you to click here
-            to <A HREF="/vote_form">continue</A>.'''
-    vote_form.exposed = True
-
-    def vote(self, choice=None, confidence=None):
+    def vote(self, uid, choice=None, confidence=None, monitor=None):
         if missing_params(choice, confidence):
             return _missing_arg_msg
-        uid = cherrypy.session['UID']
-        response = self.responses[uid]
+        try:
+            response = self.responses[uid]
+        except KeyError:
+            return self._no_response_msg()
         category = self.categoriesSorted[int(choice)]
         response.finalVote = category
         response.finalConfidence = int(confidence)
+        self.hasFinalVote.add(uid)
+        if monitor:
+            monitor.message('voted: %d of %d total'
+                            % (len(self.hasFinalVote), len(self.responses)))
         if category != response:
-            return self._selfCritiqueHTML
+            return self._viewHTML['self_critique']
         else:
-            return self._critiqueHTML
-    vote.exposed = True
+            return self._viewHTML['critique']
 
     def build_critique_form(self):
         form = self.get_choice_form('critique', False)
@@ -250,38 +357,45 @@ class QuestionBase(object):
         return self.build_vote_form(form, 'Choose an answer to critique',
                                     'Choose one of the following answers to critique:<br>\n')
 
-    def critique(self, criticisms=None, choice=None):
+    def critique(self, uid, criticisms=None, choice=None, monitor=None):
         if missing_params(criticisms, choice):
             return _missing_arg_msg
         category = self.categoriesSorted[int(choice)]
-        return self.save_critique(criticisms, category)
-    critique.exposed = True
+        return self.save_critique(uid, criticisms, category, monitor)
 
     def build_self_critique_form(self, title='Critique your original answer',
                                  text='Briefly state what you think was wrong with your original answer:<br>\n',
                                  action='self_critique'):
         doc = webui.Document(title)
         doc.add_text(text)
-        form = webui.Form(action)
+        form = webui.Form('submit')
+        form.append(webui.Input('qid', 'hidden', str(self.id)))
+        form.append(webui.Input('stage', 'hidden', action))
         form.append(webui.Textarea('criticisms'))
         form.append('<br>\n')
         doc.append(form)
+        doc.add_text(self._navHTML)
         return str(doc)
     
-    def self_critique(self, criticisms):
-        return self.save_critique(criticisms)
-    self_critique.exposed = True
+    def self_critique(self, uid, criticisms, monitor=None):
+        return self.save_critique(uid, criticisms, monitor=monitor)
     
-    def save_critique(self, criticisms, category=None):
-        uid = cherrypy.session['UID']
-        response = self.responses[uid]
+    def save_critique(self, uid, criticisms, category=None, monitor=None):
+        try:
+            response = self.responses[uid]
+        except KeyError:
+            return self._no_response_msg()
         if category is None: # treat this as a self-critique
             category = response
         response.critiqueTarget = category
         response.criticisms = criticisms
-        self.alert_if_done()
+        self.hasCritique.add(uid)
+        if monitor:
+            monitor.message('critique: %d of %d total'
+                            % (len(self.hasCritique), len(self.responses)))
+        ## self.alert_if_done()
         return '''Thanks! When your instructor asks you to, please click here to
-        <A HREF="/">continue</A>.'''
+        <A HREF="/">continue</A>.''' + self._navHTML
 
     # instructor interfaces
     def prototype_form(self, offset=0, maxview=None,
@@ -300,7 +414,10 @@ class QuestionBase(object):
         ''')
         l = list(self.iter_unclustered())[offset:]
         if not maxview:
-            maxview = self.maxview
+            try:
+                maxview = self.maxview
+            except AttributeError:
+                maxview = 10
         if maxview and len(l) > maxview:
             l = l[:maxview]
         form = webui.Form('add_prototypes')
@@ -325,7 +442,7 @@ class QuestionBase(object):
             self.list_categories(True) # force this to update
 
     def count_unclustered(self):
-        return len(self.responses) - sum([len(t) for t in self.categories.values()])
+        return len(self.responses) - len(self.isClustered)
 
     def iter_unclustered(self):
         for r in self.responses.values():
@@ -371,6 +488,7 @@ class QuestionBase(object):
                 n += 1
         self.list_categories(True) # force this to update
         self._clusterFormHTML = self.build_cluster_form()
+        self.noMatch.clear()
         return '''Added %d categories.  Tell the students to categorize
         themselves vs. your new categories.  When they are done,
         click here to <A HREF="/prototype_form">continue</A>.''' % n
@@ -390,6 +508,7 @@ class QuestionBase(object):
         else:
             self.categories[category].append(response)
         response.prototype = category
+        self.isClustered.add(response.uid)
 
     def is_correct(self, response):
         try:
@@ -398,10 +517,9 @@ class QuestionBase(object):
             return None
 
     def init_vote(self):
-        self._voteHTML = self.build_vote_form()
-        self._critiqueHTML = self.build_critique_form()
-        self._selfCritiqueHTML = self.build_self_critique_form()
-        self.answered.clear()
+        self._viewHTML['vote'] = self.build_vote_form()
+        self._viewHTML['critique'] = self.build_critique_form()
+        self._viewHTML['self_critique'] = self.build_self_critique_form()
         
     def count_rounds(self):
         'return vote counts for the three rounds of response'
@@ -461,26 +579,34 @@ class QuestionBase(object):
         return '''Saved %d responses.  Click here to go to the
         <A HREF='/admin'>PIPS console</A>.''' % n
 
-    def alert_if_done(self, initial=False):
-        self.answered.add(cherrypy.session['UID'])
-        if initial:
-            try:
-                if len(self.answered) == len(self.courseDB.logins):
-                    subprocess.call('sh beep.sh &', shell=True)
-            except AttributeError:
-                pass
-        else:
-            if len(self.answered) == len(self.responses):
-                subprocess.call('sh beep.sh &', shell=True)
+    ## def alert_if_done(self, initial=False):
+    ##     self.answered.add(cherrypy.session['UID'])
+    ##     if initial:
+    ##         try:
+    ##             if len(self.answered) == len(self.courseDB.logins):
+    ##                 subprocess.call('sh beep.sh &', shell=True)
+    ##         except AttributeError:
+    ##             pass
+    ##     else:
+    ##         if len(self.answered) == len(self.responses):
+    ##             subprocess.call('sh beep.sh &', shell=True)
+
+    ## def status(self):
+    ##     print '\n\nLogins:', len(self.courseDB.logins)
+    ##     print 'Responses:', len(self.responses)
+    ##     print 'Answers:', len(self.answered)
 
 
 class QuestionChoice(QuestionBase):
+    _stages = ('answer', 'reconsider', 'vote', 'critique', 'self_critique')
     def build_form(self, form, explanation, correctChoice, choices):
         'ask the user to choose an option'
+        self._navHTML = self.nav_html(False)
         self.correctAnswer = MultiChoiceResponse(0, self, 0, int(correctChoice))
         self.choices = choices
         self.explanation = explanation
         self._append_to_form(form)
+        self._afterURL = self.get_url('vote')
 
     def _append_to_form(self, form, suffix='', conf=True):
         l = []
@@ -491,10 +617,13 @@ class QuestionChoice(QuestionBase):
             add_confidence_choice(form)
         form.append('<br>\n')
 
-    def answer(self, choice=None, confidence=None):
+    def answer(self, uid, choice=None, confidence=None, monitor=None):
         if missing_params(choice, confidence):
             return _missing_arg_msg
-        uid = cherrypy.session['UID']
+        if uid in self.responses:
+            return '''You already answered this question.  When your instructor asks you to, please click here to
+        <A HREF="%s">continue</A>.%s''' \
+        % (self.get_url('reconsider'), self._navHTML)
         response = MultiChoiceResponse(uid, self, confidence, choice)
         try: # append to its matching category
             self.categories[response].append(response)
@@ -505,9 +634,11 @@ class QuestionChoice(QuestionBase):
             self.categories[response] = [response]
             response.prototype = response
         self.responses[uid] = response
-        self.alert_if_done(True)
+        self.answer_monitor(monitor)
+        ## self.alert_if_done(True)
         return '''Thanks for answering! When your instructor asks you to, please click here to
-        <A HREF="/reconsider_form">continue</A>.'''
+        <A HREF="%s">continue</A>.%s''' \
+        % (self.get_url('reconsider'), self._navHTML)
     answer.exposed = True
 
     def init_vote(self):
@@ -519,7 +650,6 @@ class QuestionChoice(QuestionBase):
         self.list_categories(True) # force this to update
         QuestionBase.init_vote(self)
 
-    _afterURL = '/vote_form'
     _afterText = 'the final vote'
         
 class QuestionText(QuestionBase):
@@ -529,10 +659,12 @@ class QuestionText(QuestionBase):
     pairs of dollar signs, e.g. \$\$c^2=a^2+b^2\$\$).<br>
     ''', maxview=100):
         'ask the user to enter a text answer'
+        self._navHTML = self.nav_html()
         self._correctText = correctText
         self.maxview = maxview
         self.doc.append(webui.Data(instructions))
         self._append_to_form(form)
+        self._afterURL = self.get_url('cluster')
 
     def _append_to_form(self, form, suffix='', conf=True):
         form.append(webui.Textarea('answer' + suffix))
@@ -540,16 +672,17 @@ class QuestionText(QuestionBase):
             add_confidence_choice(form)
         form.append('<br>\n')
 
-    def answer(self, answer=None, confidence=None):
+    def answer(self, uid, answer=None, confidence=None, monitor=None):
         'receive text answer from user'
         if missing_params(answer, confidence) or not answer:
             return _missing_arg_msg
-        uid = cherrypy.session['UID']
         response = TextResponse(uid, self, confidence, answer)
         self.responses[uid] = response
-        self.alert_if_done(True)
+        self.answer_monitor(monitor)
+        ## self.alert_if_done(True)
         return '''Thanks for answering!  When your instructor asks you to, please click here to
-        <A HREF="/reconsider_form">continue</A>.'''
+        <A HREF="%s">continue</A>.%s''' \
+        % (self.get_url('reconsider'), self._navHTML)
     answer.exposed = True
 
     def add_correct(self):
@@ -558,18 +691,19 @@ class QuestionText(QuestionBase):
         self.init_vote()
         return 'Great.  ' + self._gotoVoteHTML
 
-    _afterURL = '/cluster_form'
     _afterText = 'categorize your answer'
 
 class QuestionUpload(QuestionBase):
     def build_form(self, form, correctFile, stem='q',
                    imageDir='static/images', maxview=10):
         'ask the user to upload an image file'
+        self._navHTML = self.nav_html()
         self._correctFile = correctFile
         self.maxview = maxview
         self.stem = stem
         self.imageDir = imageDir
         self._append_to_form(form)
+        self._afterURL = self.get_url('cluster')
 
     def _append_to_form(self, form, suffix='', conf=True,
                         instructions='''(write your answer on a sheet of paper, take a picture,
@@ -584,11 +718,12 @@ class QuestionUpload(QuestionBase):
             add_confidence_choice(form)
         form.append('<br>\n')
 
-    def answer(self, image=None, answer2='', confidence=None):
+    def answer(self, uid, image=None, answer2='', confidence=None,
+               monitor=None):
         'receive uploaded image file from user'
-        if confidence is None or (not image.file and not answer2):
+        if confidence is None or ((not image or not image.file)
+                                  and not answer2):
             return _missing_arg_msg
-        uid = cherrypy.session['UID']
         if image.file:
             studentCode = self.courseDB.students[uid].code
             fname = 'q%d_%d_%s' % (self.id, studentCode, image.filename)
@@ -604,9 +739,11 @@ class QuestionUpload(QuestionBase):
         response = ImageResponse(uid, self, confidence, fname, answer2,
                                  self.imageDir)
         self.responses[uid] = response
-        self.alert_if_done(True)
+        self.answer_monitor(monitor)
+        ## self.alert_if_done(True)
         return '''Thanks for answering!  When your instructor asks you to, please click here to
-        <A HREF="/reconsider_form">continue</A>.'''
+        <A HREF="%s">continue</A>.%s''' \
+        % (self.get_url('reconsider'), self._navHTML)
     answer.exposed = True
 
     def add_correct(self):
@@ -616,7 +753,6 @@ class QuestionUpload(QuestionBase):
         self.init_vote()
         return 'Great.  ' + self._gotoVoteHTML
 
-    _afterURL = '/cluster_form'
     _afterText = 'categorize your answer'
 
 
@@ -628,11 +764,13 @@ class QuestionSet(QuestionBase):
     'creates a single form that wraps multiple questions'
     def build_form(self, form, questions):
         self.questions = questions
+        self.qsAnswered = set()
+        self._navHTML = ''
         for i,q in enumerate(questions):
             form.append('<HR>\n%d. %s<BR>\n' % (i + 1, q.text))
             q._append_to_form(form, '_%d' % i, False)
 
-    def answer(self, **kwargs):
+    def answer(self, monitor=None, **kwargs):
         d = {}
         for attr in kwargs: # sort arguments for each question
             i = int(attr.split('_')[-1])
@@ -645,6 +783,10 @@ class QuestionSet(QuestionBase):
             r = q.answer(confidence=0, **d2)
             if r == _missing_arg_msg: # student left something out...
                 return r
+        if monitor:
+            self.qsAnswered.add(cherrypy.session['UID'])
+            monitor.message('answers: %d / %d' % (len(self.qsAnswered),
+                                                  len(self.courseDB.logins)))
         return '''Thanks for answering! When your instructor asks you to, please click here to
         <A HREF="/">continue</A>.'''
     answer.exposed = True
