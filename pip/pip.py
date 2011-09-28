@@ -140,6 +140,8 @@ class Server(object):
             print 'ERROR: Unknown qid:', qid
             return '''An error occurred.  Please either try to resubmit your
             form, or skip to the next step.'''
+        if stage != 'answer' and uid not in q.responses:
+            return q._noResponseHTML
         try:
             return q._viewHTML[stage] # just return stored HTML
         except KeyError:

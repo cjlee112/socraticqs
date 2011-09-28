@@ -164,6 +164,11 @@ class QuestionBase(object):
             When your instructor asks you to, please click here to
             continue to the <A HREF="%s">final vote</A>.%s''' \
             % (self.get_url('vote'), self._navHTML)
+        self._noResponseHTML = \
+            '''Sorry, you first need to submit an answer
+            to this question, because I can find no record of your
+            answer.  Please click the START link below to continue.''' \
+            + self._navHTML
 
 
     _stages = ('answer', 'reconsider', 'cluster', 'vote', 'critique',
@@ -199,14 +204,13 @@ class QuestionBase(object):
         <A HREF="%s">CRITIQUE</A>
         ''' % (self.get_url('vote'), self.get_url('critique'))
         return s
-    
-    def _no_response_msg(self):
-        msg = '''Sorry, you first need to submit an answer
-        to this question, because I can find no record of your
-        answer.  Please click here to
-        <A HREF="%s">continue</A>.''' % self.get_url('answer')
-        return msg + self._navHTML
 
+    def answer_msg(self):
+        return '''Thanks for answering!
+        Please click the DISCUSS link below to start entering
+        your reasons for why you chose this answer.''' \
+        + self._navHTML
+    
     def reconsider(self, uid, reasons=None, status=None, confidence=None,
                    partner=None, monitor=None):
         if missing_params(status, confidence, partner) or not reasons:
@@ -214,7 +218,7 @@ class QuestionBase(object):
         try:
             response = self.responses[uid]
         except KeyError:
-            return self._no_response_msg()
+            return self._noResponseHTML
         if status == 'switched':
             try:
                 partnerUID = self.courseDB.userdict[partner.lower()].uid
@@ -246,7 +250,7 @@ class QuestionBase(object):
         try:
             response = self.responses[uid]
         except KeyError:
-            return self._no_response_msg()
+            return self._noResponseHTML
         if response in self.categories:
             return self._matchedHTML
         else:
@@ -283,7 +287,7 @@ class QuestionBase(object):
         try:
             response = self.responses[uid]
         except KeyError:
-            return self._no_response_msg()
+            return self._noResponseHTML
         if hasattr(response, 'prototype'):
             return '''Sorry, but your answer has already been categorized!
             When your instructor asks you to, please click here to
@@ -351,7 +355,7 @@ class QuestionBase(object):
         try:
             response = self.responses[uid]
         except KeyError:
-            return self._no_response_msg()
+            return self._noResponseHTML
         try:
             category = self.categoriesSorted[int(choice)]
         except (AttributeError,IndexError,ValueError):
@@ -411,7 +415,7 @@ class QuestionBase(object):
         try:
             response = self.responses[uid]
         except KeyError:
-            return self._no_response_msg()
+            return self._noResponseHTML
         if category is None: # treat this as a self-critique
             category = response
         response.critiqueTarget = category
@@ -667,10 +671,7 @@ class QuestionChoice(QuestionBase):
         self.responses[uid] = response
         self.answer_monitor(monitor)
         ## self.alert_if_done(True)
-        return '''Thanks for answering! When your instructor asks you to, please click here to
-        <A HREF="%s">continue</A>.%s''' \
-        % (self.get_url('reconsider'), self._navHTML)
-    answer.exposed = True
+        return self.answer_msg()
 
     def init_vote(self):
         'ensure all choices shown in final vote'
@@ -715,10 +716,7 @@ class QuestionText(QuestionBase):
         self.responses[uid] = response
         self.answer_monitor(monitor)
         ## self.alert_if_done(True)
-        return '''Thanks for answering!  When your instructor asks you to, please click here to
-        <A HREF="%s">continue</A>.%s''' \
-        % (self.get_url('reconsider'), self._navHTML)
-    answer.exposed = True
+        return self.answer_msg()
 
     def add_correct(self):
         self.correctAnswer = TextResponse(0, self, 0, self._correctText)
@@ -783,10 +781,7 @@ class QuestionUpload(QuestionBase):
         self.responses[uid] = response
         self.answer_monitor(monitor)
         ## self.alert_if_done(True)
-        return '''Thanks for answering!  When your instructor asks you to, please click here to
-        <A HREF="%s">continue</A>.%s''' \
-        % (self.get_url('reconsider'), self._navHTML)
-    answer.exposed = True
+        return self.answer_msg()
 
     def add_correct(self):
         self.correctAnswer = ImageResponse(0, self, 0, self._correctFile, '',
