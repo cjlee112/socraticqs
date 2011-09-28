@@ -297,7 +297,9 @@ class QuestionBase(object):
             % (self.get_url('vote'), self._navHTML)
 
     def build_vote_form(self, form=None, title='Vote for the best answer',
-                        text='Which of the following answers do you think is correct?<br>\n'):
+                        text='''<h1>Vote</h1>
+                        Which of the following answers do you think is correct?
+                        <br>'''):
         doc = webui.Document(title)
         doc.add_text(text)
         if form is None:
@@ -346,14 +348,18 @@ class QuestionBase(object):
             response = self.responses[uid]
         except KeyError:
             return self._no_response_msg()
-        category = self.categoriesSorted[int(choice)]
+        try:
+            category = self.categoriesSorted[int(choice)]
+        except (AttributeError,IndexError,ValueError):
+            return 'Please go back and resubmit your vote when your instructor says to.' \
+                   + self._navHTML
         response.finalVote = category
         response.finalConfidence = int(confidence)
         self.hasFinalVote.add(uid)
         if monitor:
             monitor.message('voted: %d of %d total'
                             % (len(self.hasFinalVote), len(self.responses)))
-        if category != response:
+        if hasattr(response, 'prototype') and category != response:
             return self._viewHTML['self_critique']
         else:
             return self._viewHTML['critique']
@@ -364,7 +370,9 @@ class QuestionBase(object):
         form.append(webui.Textarea('criticisms'))
         form.append('<br>\n')
         return self.build_vote_form(form, 'Choose an answer to critique',
-                                    'Choose one of the following answers to critique:<br>\n')
+                                    '''<h1>Critique</h1>
+                                    Choose one of the following answers to critique:
+                                    <br>''')
 
     def critique(self, uid, criticisms=None, choice=None, monitor=None):
         if missing_params(criticisms, choice):
@@ -377,7 +385,9 @@ class QuestionBase(object):
         return self.save_critique(uid, criticisms, category, monitor)
 
     def build_self_critique_form(self, title='Critique your original answer',
-                                 text='Briefly state what you think was wrong with your original answer:<br>\n',
+                                 text='''<h1>Critique</h1>
+                                 Briefly state what you think was wrong with your original answer:
+                                 <br>''',
                                  action='self_critique'):
         doc = webui.Document(title)
         doc.add_text(text)
