@@ -640,6 +640,7 @@ class QuestionChoice(QuestionBase):
         <A HREF="%s">continue</A>.%s''' \
         % (self.get_url('reconsider'), self._navHTML)
         response = MultiChoiceResponse(uid, self, confidence, choice)
+        self.isClustered.add(uid) # count this as categorized
         try: # append to its matching category
             self.categories[response].append(response)
             for r in self.categories:
