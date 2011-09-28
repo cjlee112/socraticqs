@@ -309,10 +309,14 @@ class QuestionBase(object):
         return str(doc)
 
     def get_choice_form(self, action='vote', confidenceChoice=True,
-                        maxreasons=2, fmt='%(answer)s', separator='<hr>\n'):
-        form = webui.Form('submit')
-        form.append(webui.Input('qid', 'hidden', str(self.id)))
-        form.append(webui.Input('stage', 'hidden', action))
+                        maxreasons=2, fmt='%(answer)s', separator='<hr>\n',
+                        useSubmit=True):
+        if useSubmit:
+            form = webui.Form('submit')
+            form.append(webui.Input('qid', 'hidden', str(self.id)))
+            form.append(webui.Input('stage', 'hidden', action))
+        else:
+            form = webui.Form(action)
         l = []
         for i,category in enumerate(self.list_categories()):
             responses = self.categories.get(category, ())
@@ -487,12 +491,13 @@ class QuestionBase(object):
                 / len(self.responses)
         except AttributeError:
             doc.add_text('Choose which answer is correct:')
-            doc.append(self.get_choice_form('correct', False, 0, fmt))
+            doc.append(self.get_choice_form('correct', False, 0, fmt,
+                                            useSubmit=False))
             doc.add_text('''<br>If none of these are correct, click here
             to add the <A HREF="/add_correct">correct answer</A>
             given by the instructor.''')
         else:
-            doc.add_text('%2.0f%% of students got the correct answer' % p)
+            doc.add_text('%2.0f%% of students got the correct answer<hr>' % p)
             doc.append(self.get_choice_form('correct', False, 0, fmt))
             doc.add_text(self._gotoVoteHTML)
             self.init_vote()
@@ -680,9 +685,13 @@ class QuestionChoice(QuestionBase):
         
 class QuestionText(QuestionBase):
     def build_form(self, form, correctText,
-                   instructions=r'''(Briefly state your answer to the question
+                   instructions=r'''<br>
+    Briefly state your answer to the question
     in the box below.  You may enter latex equations by enclosing them in
-    pairs of dollar signs, e.g. \$\$c^2=a^2+b^2\$\$).<br>
+    pairs of dollar signs, e.g. \$\$c^2=a^2+b^2\$\$
+    or as an inline equation bracketed on the left by a backslash
+    followed by open-parenthesis and on the right by a backslash
+    followed by close-parenthesis.<br>
     ''', maxview=100):
         'ask the user to enter a text answer'
         self._navHTML = self.nav_html()
