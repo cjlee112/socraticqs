@@ -201,7 +201,8 @@ class QuestionBase(object):
             s += '<A HREF="%s">CATEGORIZE</A> &gt' % self.get_url('cluster')
         s += '''
         <A HREF="%s">VOTE</A> &gt
-        <A HREF="%s">CRITIQUE</A>
+        <A HREF="%s">CRITIQUE</A> |
+        [<A HREF="/logout">LOGOUT</A>]
         ''' % (self.get_url('vote'), self.get_url('critique'))
         return s
 
@@ -759,7 +760,7 @@ class QuestionUpload(QuestionBase):
                                   and not answer2):
             return _missing_arg_msg
         size = 0
-        if image.file:
+        if getattr(image, 'file', None):
             studentCode = self.courseDB.students[uid].code
             fname = 'q%d_%d_%s' % (self.id, studentCode, image.filename)
             ifile = open(os.path.join(self.imageDir, fname), 'wb')
