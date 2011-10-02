@@ -6,6 +6,7 @@ from datetime import datetime, date
 from question import questionTypes
 import random
 import Queue
+import re
 
 class BadUIDError(ValueError):
     pass
@@ -237,3 +238,71 @@ class CourseDB(object):
             conn.close()
         return n # number of saved responses
 
+    def write_report(self, rstfile, qid, orderBy='cluster_id', title='Report'):
+        letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+        ifile = open(rstfile, 'w')
+        print >>ifile, ('#' * len(title)) + '\n' + title + '\n' + ('#' * len(title)) + '\n'
+        conn = sqlite3.connect(self.dbfile)
+        c = conn.cursor()
+        currentID = None
+        i = 0
+        d = {}
+        critiques = {}
+        is_correct = {}
+        answer = {}
+        try:
+            c.execute('select uid, cluster_id, is_correct, answer, reasons, switched_id, final_id, critique_id, criticisms from responses where question_id=? order by %s'
+                      % orderBy, (qid,))
+            for t in c.fetchall():
+                try:
+                    d[t[1]].append(t)
+                except KeyError:
+                    d[t[1]] = [t]
+                    is_correct[t[1]] = int(t[2])
+                if t[0] == t[1]: # prototype
+                    answer[t[1]] = t[3]
+                if t[-2] == t[0]: # self-critique
+                    critiqueID = t[1]
+                else:
+                    critiqueID = t[-2]
+                if t[-1]:
+                    try:
+                        critiques[critiqueID].append(t[-1])
+                    except KeyError:
+                        critiques[critiqueID] = [t[-1]]
+            for cluster_id,rows in d.items():
+                s = 'Answer ' + letters[i]
+                if is_correct[cluster_id]:
+                    s += ' (Correct)'
+                else:
+                    s += ' (Wrong)'
+                i += 1
+                print >>ifile, '\n' + s + '\n' + ('-' * len(s))
+                s = simple_rst(answer[cluster_id])
+                print >>ifile, '\n' + s
+                if rows:
+                    s = 'Reasons Given for this Answer'
+                    print >>ifile, '\n' + s + '\n' + ('.' * len(s)) + '\n'
+                    for t in rows:
+                        if t[4]:
+                            print >>ifile, '* ' + simple_rst(t[4], '\n  ')
+                try:
+                    l = critiques[cluster_id]
+                except KeyError:
+                    pass
+                else:
+                    s = 'Critiques of this Answer'
+                    print >>ifile, '\n' + s + '\n' + ('.' * len(s)) + '\n'
+                    for criticism in l:
+                        print >>ifile, '* ' + simple_rst(criticism, '\n  ')
+        finally:
+            c.close()
+            conn.close()
+            ifile.close()
+
+
+def simple_rst(s, lineStart='\n'):
+    s = lineStart.join(s.split('\n'))
+    s = re.sub(r'\$\$([^$]+)\$\$\s*', '\n%s.. math:: \\1\n%s'
+               % (lineStart, lineStart), s)
+    return s
