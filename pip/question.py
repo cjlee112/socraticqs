@@ -808,7 +808,12 @@ class QuestionSet(QuestionBase):
             form.append('<HR>\n%d. %s<BR>\n' % (i + 1, q.text))
             q._append_to_form(form, '_%d' % i, False)
 
-    def answer(self, monitor=None, **kwargs):
+    def answer(self, uid, monitor=None, **kwargs):
+        if uid in self.qsAnswered:
+            return '''Sorry, I have already recorded a previous set of
+            answers from you.  You cannot resubmit a new set of answers.
+            When your instructor asks you to, please click here to
+        <A HREF="/">continue</A>.'''
         d = {}
         for attr in kwargs: # sort arguments for each question
             i = int(attr.split('_')[-1])
@@ -818,11 +823,11 @@ class QuestionSet(QuestionBase):
             for attr in d.get(i, ()): # copy kwargs for this question
                 k = attr.split('_')[0]
                 d2[k] = kwargs[attr]
-            r = q.answer(confidence=0, **d2)
+            r = q.answer(uid, confidence=0, **d2)
             if r == _missing_arg_msg: # student left something out...
                 return r
         if monitor:
-            self.qsAnswered.add(cherrypy.session['UID'])
+            self.qsAnswered.add(uid)
             monitor.message('answers: %d / %d' % (len(self.qsAnswered),
                                                   len(self.courseDB.logins)))
         return '''Thanks for answering! When your instructor asks you to, please click here to

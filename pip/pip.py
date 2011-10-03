@@ -4,6 +4,7 @@ import thread
 import login
 from coursedb import CourseDB
 from monitor import TtyMonitor
+from question import QuestionSet
 
 def redirect(path='/', body=None, delay=0):
     'redirect browser, if desired after showing a message'
@@ -228,6 +229,24 @@ class Server(object):
             ofile.write(kwargs['File0_%d' % i].file.read())
             ofile.close()
     aurigma_up.exposed = True
+
+    def start_quiz(self, qid=0, title='Quiz',
+                   instructions='''Please answer all of the following
+                   questions. You must answer all questions.
+                   When you have answered all questions, click Go
+                   to submit your answers.  Note that your submitted
+                   answers are final; you cannot resubmit answers again.''',
+                   graded=True):
+        if graded:
+            instructions += ''' <B>This quiz will be graded, and
+                   counts for your class grade.</B>'''
+        quiz = QuestionSet(qid, title, instructions, self.courseDB.questions)
+        self.serve_question(quiz)
+        return quiz
+
+    def reload(self, qfile):
+        self.courseDB.load_question_file(qfile)
+        print 'Loaded %d questions' % len(self.courseDB.questions)
         
 def test(title='Monty Hall',
          text=r'''The probability of winning by switching your choice is:
