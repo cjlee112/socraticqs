@@ -7,6 +7,7 @@ from question import questionTypes
 import random
 import Queue
 import re
+import codecs
 
 class BadUIDError(ValueError):
     pass
@@ -238,67 +239,90 @@ class CourseDB(object):
             conn.close()
         return n # number of saved responses
 
-    def write_report(self, rstfile, qid, orderBy='cluster_id', title='Report'):
-        letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
-        ifile = open(rstfile, 'w')
+    def write_report(self, rstfile, qlist, title='Report'):
+        ifile = codecs.open(rstfile, 'w', 'utf-8')
         print >>ifile, ('#' * len(title)) + '\n' + title + '\n' + ('#' * len(title)) + '\n'
         conn = sqlite3.connect(self.dbfile)
         c = conn.cursor()
+        try:
+            for qid in qlist:
+                c.execute('select qtype, title from questions where id=?',
+                          (qid,))
+                qtype, qtitle = c.fetchall()[0]
+                if qtype == 'mc':
+                    self.question_report(ifile, qid, c, qtitle, 'answer')
+                else:
+                    self.question_report(ifile, qid, c, qtitle)
+        finally:
+            c.close()
+            conn.close()
+            ifile.close()
+    def question_report(self, ifile, qid, c, title, orderBy='cluster_id'):
+        letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+        print >>ifile, '\n' + title + '\n' + ('-' * len(title)) + '\n\n'
         currentID = None
         i = 0
         d = {}
         critiques = {}
         is_correct = {}
         answer = {}
-        try:
-            c.execute('select uid, cluster_id, is_correct, answer, reasons, switched_id, final_id, critique_id, criticisms from responses where question_id=? order by %s'
-                      % orderBy, (qid,))
-            for t in c.fetchall():
+        c.execute('select uid, cluster_id, is_correct, answer, reasons, switched_id, final_id, critique_id, criticisms from responses where question_id=? order by %s'
+                  % orderBy, (qid,))
+        order = []
+        for t in c.fetchall():
+            if not t[1]: # not categorized so not usable
+                continue
+            try:
+                d[t[1]].append(t)
+            except KeyError:
+                order.append(t[1])
+                d[t[1]] = [t]
                 try:
-                    d[t[1]].append(t)
-                except KeyError:
-                    d[t[1]] = [t]
-                    is_correct[t[1]] = int(t[2])
-                if t[0] == t[1]: # prototype
-                    answer[t[1]] = t[3]
-                if t[-2] == t[0]: # self-critique
-                    critiqueID = t[1]
-                else:
-                    critiqueID = t[-2]
-                if t[-1]:
-                    try:
-                        critiques[critiqueID].append(t[-1])
-                    except KeyError:
-                        critiques[critiqueID] = [t[-1]]
-            for cluster_id,rows in d.items():
-                s = 'Answer ' + letters[i]
-                if is_correct[cluster_id]:
-                    s += ' (Correct)'
-                else:
-                    s += ' (Wrong)'
-                i += 1
-                print >>ifile, '\n' + s + '\n' + ('-' * len(s))
-                s = simple_rst(answer[cluster_id])
-                print >>ifile, '\n' + s
-                if rows:
-                    s = 'Reasons Given for this Answer'
-                    print >>ifile, '\n' + s + '\n' + ('.' * len(s)) + '\n'
-                    for t in rows:
-                        if t[4]:
-                            print >>ifile, '* ' + simple_rst(t[4], '\n  ')
+                    if int(t[2]):
+                        is_correct[t[1]] = 'Correct'
+                    else:
+                        is_correct[t[1]] = 'Wrong'
+                except TypeError:
+                    is_correct[t[1]] = 'Uncategorized'
+            if t[0] == t[1]: # prototype
+                answer[t[1]] = t[3]
+            if t[-2] == t[0]: # self-critique
+                critiqueID = t[1]
+            else:
+                critiqueID = t[-2]
+            if t[-1]:
                 try:
-                    l = critiques[cluster_id]
+                    critiques[critiqueID].append(t[-1])
                 except KeyError:
-                    pass
-                else:
-                    s = 'Critiques of this Answer'
-                    print >>ifile, '\n' + s + '\n' + ('.' * len(s)) + '\n'
-                    for criticism in l:
-                        print >>ifile, '* ' + simple_rst(criticism, '\n  ')
-        finally:
-            c.close()
-            conn.close()
-            ifile.close()
+                    critiques[critiqueID] = [t[-1]]
+        for cluster_id in order:
+            rows = d[cluster_id]
+            try:
+                i = int(answer[cluster_id]) # only valid if multiple choice
+            except ValueError:
+                a = simple_rst(answer[cluster_id]) # text response
+            else:
+                a = None
+            s = 'Answer ' + letters[i] + ' (%s)' % is_correct[cluster_id]
+            i += 1
+            print >>ifile, '\n' + s + '\n' + ('.' * len(s))
+            if a: # print text response answer
+                print >>ifile, '\n' + a
+            if rows:
+                s = 'Reasons Given for this Answer'
+                print >>ifile, '\n' + s + '\n' + ('+' * len(s)) + '\n'
+                for t in rows:
+                    if t[4]:
+                        print >>ifile, '* ' + simple_rst(t[4], '\n  ')
+            try:
+                l = critiques[cluster_id]
+            except KeyError:
+                pass
+            else:
+                s = 'Critiques of this Answer'
+                print >>ifile, '\n' + s + '\n' + ('+' * len(s)) + '\n'
+                for criticism in l:
+                    print >>ifile, '* ' + simple_rst(criticism, '\n  ')
 
 
 def simple_rst(s, lineStart='\n'):
