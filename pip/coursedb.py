@@ -269,8 +269,10 @@ class CourseDB(object):
         c.execute('select uid, cluster_id, is_correct, answer, reasons, switched_id, final_id, critique_id, criticisms from responses where question_id=? order by %s'
                   % orderBy, (qid,))
         order = []
+        uncategorized = []
         for t in c.fetchall():
             if not t[1]: # not categorized so not usable
+                uncategorized.append(t)
                 continue
             try:
                 d[t[1]].append(t)
@@ -299,6 +301,10 @@ class CourseDB(object):
             rows = d[cluster_id]
             try:
                 i = int(answer[cluster_id]) # only valid if multiple choice
+            except KeyError: # no prototype found?  Use the first answer found
+                l = [(len(t[3]),t[3]) for t in rows]
+                l.sort() # find the longest answer for this category
+                a = simple_rst(l[-1][1]) # text response
             except ValueError:
                 a = simple_rst(answer[cluster_id]) # text response
             else:
@@ -323,6 +329,15 @@ class CourseDB(object):
                 print >>ifile, '\n' + s + '\n' + ('+' * len(s)) + '\n'
                 for criticism in l:
                     print >>ifile, '* ' + simple_rst(criticism, '\n  ')
+        if uncategorized:
+            s = 'Uncategorized Answers'
+            print >>ifile, '\n' + s + '\n' + ('.' * len(s)) + '\n'
+            for t in uncategorized:
+                if t[4]:
+                    s = t[3] + '.  ' + t[4]
+                else:
+                    s = t[3]
+                print >>ifile, '* ' + simple_rst(s, '\n  ')
 
 
 def simple_rst(s, lineStart='\n'):
