@@ -168,7 +168,7 @@ class CourseDB(object):
             raise BadUsernameError('Username %s is already taken.  Try again.'
                                    % username)
         self._execute_and_commit('insert into students values (?,?,?,date(?),"user")',
-                                 (uid, username, fullname,
+                                 (uid, fullname, username,
                                   date.today().isoformat()))
         student = Student(uid, fullname, username)
         student.code = self.idQueue.get() # get a unique random code
