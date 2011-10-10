@@ -23,14 +23,9 @@ def add_confidence_choice(form, levels=('Just guessing', 'Not quite sure',
 def build_reconsider_form(qid, bottom='', title='Reconsidering your answer'):
     'return HTML for standard form for round 2'
     doc = webui.Document(title)
-    doc.add_text('''Briefly state the key points that you used to argue
-    in favor of your original answer:<br>
-    ''')
     form = webui.Form('submit')
     form.append(webui.Input('qid', 'hidden', str(qid)))
     form.append(webui.Input('stage', 'hidden', 'reconsider'))
-    form.append(webui.Textarea('reasons'))
-    form.append('<br>\n')
     d = dict(unchanged='I still prefer my original answer.',
              switched="I've decided my partner's answer is better (enter his/her name below).")
     form.append(webui.RadioSelection('status', d.items(),
@@ -38,6 +33,26 @@ def build_reconsider_form(qid, bottom='', title='Reconsidering your answer'):
     add_confidence_choice(form)
     form.append("<br>\nYour partner's username (only needed if you prefer their answer):")
     form.append(webui.Input('partner'))
+    form.append('<br>\n')
+    doc.append(form)
+    doc.add_text(bottom)
+    return str(doc)
+
+def build_assess_form(qid, bottom='', title='Assessing your answer'):
+    'return HTML for standard form for round 2'
+    doc = webui.Document(title)
+    doc.add_text('''How does your answer compare with the right answer?
+    If your answer was different, please briefly explain below how your
+    reasoning differed.''', 'B')
+    form = webui.Form('submit')
+    form.append(webui.Input('qid', 'hidden', str(qid)))
+    form.append(webui.Input('stage', 'hidden', 'assess'))
+    options = (('correct', 'Essentially the same.'),
+               ('close', 'Close.'),
+               ('different', 'Different.'))
+    form.append(webui.RadioSelection('assessment', options))
+    form.append("<br>\nHow your reasoning differed:<br>\n")
+    form.append(webui.Textarea('differences'))
     form.append('<br>\n')
     doc.append(form)
     doc.add_text(bottom)
@@ -124,6 +139,7 @@ class QuestionBase(object):
         self.id = questionID
         self.title = title
         self.text = text
+        self.categories = {}
         for attr in ('hasReasons', 'isClustered', 'noMatch', 'hasFinalVote',
                      'hasCritique'):
             setattr(self, attr, set()) # initialize answer counters
@@ -134,25 +150,22 @@ class QuestionBase(object):
         form.append(webui.Input('qid', 'hidden', str(self.id)))
         form.append(webui.Input('stage', 'hidden', 'answer'))
         self.build_form(form, *args, **kwargs)
+        try:
+            self.correctAnswer.prototype = self.correctAnswer
+        except AttributeError:
+            pass
         doc.append(form)
         doc.add_text(self._navHTML)
         self.responses = {}
-        self.categories = {}
         d = {}
         for attr in self._stages: # initialize submission action dict
             d[attr] = getattr(self, attr)
         self.submitStages = d
+        self._afterURL = self.get_url('assess')
         self._viewHTML = {
             'answer': str(doc),
             'reconsider': build_reconsider_form(questionID, self._navHTML),
-            'vote': '''Sorry, not all answers have been categorized yet.
-            Please wait until your instructor asks you to click here
-            to <A HREF="%s">continue</A>.%s'''
-            % (self.get_url('vote'), self._navHTML),
-            'critique': 'Sorry, we are not yet ready to critique answers.'
-            + self._navHTML,
-            'self_critique': 'Sorry, we are not yet ready to critique answers.'
-            + self._navHTML
+            'assess': build_assess_form(questionID, self._navHTML)
             }
         self._clusterFormHTML = \
             '''No categories have yet been added.
@@ -171,8 +184,8 @@ class QuestionBase(object):
             + self._navHTML
 
 
-    _stages = ('answer', 'reconsider', 'cluster', 'vote', 'critique',
-               'self_critique')
+    _stages = ('answer', 'reconsider', 'assess')
+    _afterText = 'assess your answer'
 
     def __str__(self):
         return str(self.doc)
@@ -196,25 +209,19 @@ class QuestionBase(object):
         s = '''<HR>
         <A HREF="/">START</A> &gt
         <A HREF="%s">DISCUSS</A> &gt
-        ''' % self.get_url('reconsider')
-        if cluster:
-            s += '<A HREF="%s">CATEGORIZE</A> &gt' % self.get_url('cluster')
-        s += '''
-        <A HREF="%s">VOTE</A> &gt
-        <A HREF="%s">CRITIQUE</A> |
+        <A HREF="%s">ASSESS</A> &gt
         [<A HREF="/logout">LOGOUT</A>]
-        ''' % (self.get_url('vote'), self.get_url('critique'))
+        ''' % (self.get_url('reconsider'), self.get_url('assess'))
         return s
 
     def answer_msg(self):
-        return '''Thanks for answering!
-        Please click the DISCUSS link below to start entering
-        your reasons for why you chose this answer.''' \
+        return '''Thanks for answering!  When your instructor asks you to,
+        please click the DISCUSS link below.''' \
         + self._navHTML
     
-    def reconsider(self, uid, reasons=None, status=None, confidence=None,
+    def reconsider(self, uid, status=None, confidence=None,
                    partner=None, monitor=None):
-        if missing_params(status, confidence, partner) or not reasons:
+        if missing_params(status, confidence, partner):
             return _missing_arg_msg
         try:
             response = self.responses[uid]
@@ -236,16 +243,32 @@ class QuestionBase(object):
                 + self._navHTML
         else:
             response.response2 = response
-        response.reasons = reasons
         response.confidence2 = int(confidence)
         self.hasReasons.add(uid)
         if monitor:
             monitor.message('recons: %d of %d total'
                             % (len(self.hasReasons), len(self.responses)))
-        ## self.alert_if_done()
         return '''Thanks! When your instructor asks you to, please click here to
             continue to <A HREF="%s">%s</A>.%s''' \
             % (self._afterURL, self._afterText, self._navHTML)
+
+    def assess(self, uid, assessment=None, differences=None, monitor=None):
+        if not assessment or (assessment != 'correct' and not differences):
+            return _missing_arg_msg
+        try:
+            response = self.responses[uid]
+        except KeyError:
+            return self._noResponseHTML
+        response.reasons = assessment
+        if assessment == 'correct': # categorize as right answer
+            self.set_prototype(response, self.correctAnswer)
+        else:
+            response.critiqueTarget = response
+            response.criticisms = differences
+            self.noMatch.add(uid)
+        self.cluster_monitor(monitor)
+        return '''Thanks! When your instructor asks you to, please click here to
+        <A HREF="/">continue</A>.''' + self._navHTML
 
     def cluster_form(self, uid):
         try:
@@ -633,15 +656,17 @@ class QuestionBase(object):
 
 
 class QuestionChoice(QuestionBase):
-    _stages = ('answer', 'reconsider', 'vote', 'critique', 'self_critique')
     def build_form(self, form, explanation, correctChoice, choices):
         'ask the user to choose an option'
         self._navHTML = self.nav_html(False)
-        self.correctAnswer = MultiChoiceResponse(0, self, 0, int(correctChoice))
+        for i in range(len(choices)): # add all choices as categories
+            r = MultiChoiceResponse(i, self, 0, i)
+            if i == int(correctChoice):
+                self.correctAnswer = r
+            self.categories[r] = []
         self.choices = choices
         self.explanation = explanation
         self._append_to_form(form)
-        self._afterURL = self.get_url('vote')
 
     def _append_to_form(self, form, suffix='', conf=True):
         l = []
@@ -661,29 +686,20 @@ class QuestionChoice(QuestionBase):
         % (self.get_url('reconsider'), self._navHTML)
         response = MultiChoiceResponse(uid, self, confidence, choice)
         self.isClustered.add(uid) # count this as categorized
-        try: # append to its matching category
-            self.categories[response].append(response)
-            for r in self.categories:
-                if r == response:
-                    response.prototype = r
-        except KeyError: # add this as a new category
-            self.categories[response] = [response]
-            response.prototype = response
+        # append to its matching category
+        self.categories[response].append(response)
+        for r in self.categories:
+            if r == response:
+                response.prototype = r
         self.responses[uid] = response
         self.answer_monitor(monitor)
-        ## self.alert_if_done(True)
         return self.answer_msg()
 
     def init_vote(self):
         'ensure all choices shown in final vote'
-        for i in range(len(self.choices)):
-            r = MultiChoiceResponse(i, self, 0, i)
-            if r not in self.categories:
-                self.categories[r] = []
         self.list_categories(True) # force this to update
         QuestionBase.init_vote(self)
 
-    _afterText = 'the final vote'
         
 class QuestionText(QuestionBase):
     def build_form(self, form, correctText,
@@ -698,10 +714,11 @@ class QuestionText(QuestionBase):
         'ask the user to enter a text answer'
         self._navHTML = self.nav_html()
         self._correctText = correctText
+        self.correctAnswer = TextResponse(0, self, 0, self._correctText)
+        self.categories[self.correctAnswer] = []
         self.maxview = maxview
         self.doc.append(webui.Data(instructions))
         self._append_to_form(form)
-        self._afterURL = self.get_url('cluster')
 
     def _append_to_form(self, form, suffix='', conf=True):
         form.append(webui.Textarea('answer' + suffix))
@@ -725,7 +742,6 @@ class QuestionText(QuestionBase):
         self.init_vote()
         return 'Great.  ' + self._gotoVoteHTML
 
-    _afterText = 'categorize your answer'
 
 class QuestionUpload(QuestionBase):
     maxSize = 500000 # don't show images bigger than 500kb
@@ -737,8 +753,10 @@ class QuestionUpload(QuestionBase):
         self.maxview = maxview
         self.stem = stem
         self.imageDir = imageDir
+        self.correctAnswer = ImageResponse(0, self, 0, self._correctFile, '',
+                                           self.imageDir)
+        self.categories[self.correctAnswer] = []
         self._append_to_form(form)
-        self._afterURL = self.get_url('cluster')
 
     def _append_to_form(self, form, suffix='', conf=True,
                         instructions='''(write your answer on a sheet of paper, take a picture,
@@ -791,7 +809,6 @@ class QuestionUpload(QuestionBase):
         self.init_vote()
         return 'Great.  ' + self._gotoVoteHTML
 
-    _afterText = 'categorize your answer'
 
 
 questionTypes = dict(mc=QuestionChoice,
