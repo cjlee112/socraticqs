@@ -215,8 +215,11 @@ class QuestionBase(object):
         return s
 
     def answer_msg(self):
-        return '''Thanks for answering!  When your instructor asks you to,
-        please click the DISCUSS link below.''' \
+        return '''Thanks for answering!  As soon as your partner is
+        ready, please take turns explaining why you think your
+        answer is right, approximately one minute each.
+        Then click the DISCUSS link below to record whether
+        you changed your mind or not.''' \
         + self._navHTML
     
     def reconsider(self, uid, status=None, confidence=None,
