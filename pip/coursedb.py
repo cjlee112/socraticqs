@@ -239,7 +239,7 @@ class CourseDB(object):
             conn.close()
         return n # number of saved responses
 
-    def write_report(self, rstfile, qlist, title='Report'):
+    def write_report(self, rstfile, qlist, title='Report', **kwargs):
         ifile = codecs.open(rstfile, 'w', 'utf-8')
         print >>ifile, ('#' * len(title)) + '\n' + title + '\n' + ('#' * len(title)) + '\n'
         conn = sqlite3.connect(self.dbfile)
@@ -250,14 +250,16 @@ class CourseDB(object):
                           (qid,))
                 qtype, qtitle = c.fetchall()[0]
                 if qtype == 'mc':
-                    self.question_report(ifile, qid, c, qtitle, 'answer')
+                    self.question_report(ifile, qid, c, qtitle, 'answer',
+                                         **kwargs)
                 else:
-                    self.question_report(ifile, qid, c, qtitle)
+                    self.question_report(ifile, qid, c, qtitle, **kwargs)
         finally:
             c.close()
             conn.close()
             ifile.close()
-    def question_report(self, ifile, qid, c, title, orderBy='cluster_id'):
+    def question_report(self, ifile, qid, c, title, orderBy='cluster_id',
+                        showReasons=False):
         letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
         print >>ifile, '\n' + title + '\n' + ('-' * len(title)) + '\n\n'
         currentID = None
@@ -271,7 +273,7 @@ class CourseDB(object):
         order = []
         uncategorized = []
         for t in c.fetchall():
-            if not t[1]: # not categorized so not usable
+            if t[1] is None: # not categorized so not usable
                 uncategorized.append(t)
                 continue
             try:
@@ -309,12 +311,13 @@ class CourseDB(object):
                 a = simple_rst(answer[cluster_id]) # text response
             else:
                 a = None
-            s = 'Answer ' + letters[i] + ' (%s)' % is_correct[cluster_id]
+            s = 'Answer ' + letters[i] + ' (%s, %d people)' \
+                % (is_correct[cluster_id], len(rows))
             i += 1
             print >>ifile, '\n' + s + '\n' + ('.' * len(s))
             if a: # print text response answer
                 print >>ifile, '\n' + a
-            if rows:
+            if showReasons and rows:
                 s = 'Reasons Given for this Answer'
                 print >>ifile, '\n' + s + '\n' + ('+' * len(s)) + '\n'
                 for t in rows:
@@ -330,18 +333,23 @@ class CourseDB(object):
                 for criticism in l:
                     print >>ifile, '* ' + simple_rst(criticism, '\n  ')
         if uncategorized:
-            s = 'Uncategorized Answers'
+            s = 'Uncategorized Answers (%d people)' % len(uncategorized)
             print >>ifile, '\n' + s + '\n' + ('.' * len(s)) + '\n'
+            uncategorized.sort(lambda t,u:cmp(t[4],u[4]))
             for t in uncategorized:
+                s = t[3] + '.  '
                 if t[4]:
-                    s = t[3] + '.  ' + t[4]
-                else:
-                    s = t[3]
+                    s += '(' + t[4] + ').  '
+                if t[-1]:
+                    s += '**Difference:** ' + t[-1]
                 print >>ifile, '* ' + simple_rst(s, '\n  ')
 
 
 def simple_rst(s, lineStart='\n'):
-    s = lineStart.join(s.split('\n'))
+    s = ' '.join(s.split('\r')) # get rid of non-standard carriage returns
+    s = lineStart.join(s.split('\n')) # apply indenting
+    s = re.sub('----+', '', s) # get rid of headings that will crash ReST
+    s = re.sub(r'\$\$([\w^\\{}().]+)\$\$', r':math:`\1`', s) # treat as inline
     s = re.sub(r'\$\$([^$]+)\$\$\s*', '\n%s.. math:: \\1\n%s'
-               % (lineStart, lineStart), s)
+               % (lineStart, lineStart), s) # treat as displaymath
     return s
