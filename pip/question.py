@@ -709,7 +709,7 @@ class QuestionText(QuestionBase):
                    instructions=r'''<br>
     Briefly state your answer to the question
     in the box below.  You may enter latex equations by enclosing them in
-    pairs of dollar signs, e.g. \$\$c^2=a^2+b^2\$\$
+    pairs of dollar signs, e.g. \$\$\sum_{\alpha}{p(\alpha|Z)}=1\$\$
     or as an inline equation bracketed on the left by a backslash
     followed by open-parenthesis and on the right by a backslash
     followed by close-parenthesis.<br>
