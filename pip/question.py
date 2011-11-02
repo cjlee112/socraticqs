@@ -698,6 +698,21 @@ class QuestionChoice(QuestionBase):
         self.answer_monitor(monitor)
         return self.answer_msg()
 
+    def assess(self, uid, assessment=None, differences=None, monitor=None):
+        if assessment == 'correct':
+            try:
+                response = self.responses[uid]
+            except KeyError:
+                return self._noResponseHTML
+            if response != self.correctAnswer:
+                return '''Since your original answer did not match the correct
+                choice, you must select "Close" or "Different".
+                Please click the Back button in your browser to update
+                your response; please indicate how your answer differed from
+                the correct answer.'''
+        return QuestionBase.assess(self, uid, assessment=assessment,
+                                   differences=differences, monitor=monitor)
+
     def init_vote(self):
         'ensure all choices shown in final vote'
         self.list_categories(True) # force this to update
