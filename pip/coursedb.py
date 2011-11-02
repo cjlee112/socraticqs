@@ -251,7 +251,7 @@ class CourseDB(object):
                 qtype, qtitle = c.fetchall()[0]
                 if qtype == 'mc':
                     self.question_report(ifile, qid, c, qtitle, 'answer',
-                                         **kwargs)
+                                         multipleChoice=True, **kwargs)
                 else:
                     self.question_report(ifile, qid, c, qtitle, **kwargs)
         finally:
@@ -259,7 +259,7 @@ class CourseDB(object):
             conn.close()
             ifile.close()
     def question_report(self, ifile, qid, c, title, orderBy='cluster_id',
-                        showReasons=False):
+                        showReasons=False, multipleChoice=False):
         letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
         print >>ifile, '\n' + title + '\n' + ('-' * len(title)) + '\n\n'
         currentID = None
@@ -302,15 +302,16 @@ class CourseDB(object):
         for cluster_id in order:
             rows = d[cluster_id]
             try:
-                i = int(answer[cluster_id]) # only valid if multiple choice
-            except KeyError: # no prototype found?  Use the first answer found
-                l = [(len(t[3]),t[3]) for t in rows]
-                l.sort() # find the longest answer for this category
-                a = simple_rst(l[-1][1]) # text response
-            except ValueError:
-                a = simple_rst(answer[cluster_id]) # text response
+                a = answer[cluster_id]
+            except KeyError: # no prototype found?
+                if multipleChoice: # no need to extract a text response
+                    a = None
+                else:
+                    l = [(len(t[3]),t[3]) for t in rows]
+                    l.sort() # find the longest answer for this category
+                    a = simple_rst(l[-1][1]) # text response
             else:
-                a = None
+                a = simple_rst(a) # get text response from prototype
             s = 'Answer ' + letters[i] + ' (%s, %d people)' \
                 % (is_correct[cluster_id], len(rows))
             i += 1
