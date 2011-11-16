@@ -259,7 +259,8 @@ class CourseDB(object):
             conn.close()
             ifile.close()
     def question_report(self, ifile, qid, c, title, orderBy='cluster_id',
-                        showReasons=False, multipleChoice=False):
+                        showReasons=False, multipleChoice=False,
+                        correctOnly=True):
         letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
         print >>ifile, '\n' + title + '\n' + ('-' * len(title)) + '\n\n'
         currentID = None
@@ -276,6 +277,18 @@ class CourseDB(object):
             if t[1] is None: # not categorized so not usable
                 uncategorized.append(t)
                 continue
+            elif correctOnly:
+                if int(t[2]):
+                    try:
+                        d[t[1]].append(t)
+                    except KeyError:
+                        order.append(t[1])
+                        d[t[1]] = [t]
+                        is_correct[t[1]] = 'Correct'
+                else:
+                    uncategorized.append(t)
+                continue
+                    
             try:
                 d[t[1]].append(t)
             except KeyError:
