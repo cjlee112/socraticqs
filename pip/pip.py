@@ -247,6 +247,10 @@ class Server(object):
     def reload(self, qfile):
         self.courseDB.load_question_file(qfile)
         print 'Loaded %d questions' % len(self.courseDB.questions)
+
+    def save_responses(self):
+        for q in self.questions.values():
+            print q.save_responses()
         
 def test(title='Monty Hall',
          text=r'''The probability of winning by switching your choice is:
