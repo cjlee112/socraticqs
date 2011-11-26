@@ -3,7 +3,6 @@ import webui
 import thread
 import login
 from coursedb import CourseDB
-from monitor import TtyMonitor
 from question import QuestionSet
 
 def redirect(path='/', body=None, delay=0):
@@ -16,12 +15,17 @@ def redirect(path='/', body=None, delay=0):
     s += '</HTML>\n'
     return s
 
+class TrivialMonitor(object):
+    def message(self, msg):
+        print msg
+
+
 class Server(object):
     '''provides dynamic interfaces for students and instructor.
     Intended to be run from Python console, retaining control via the
     console thread; the cherrypy server runs using background threads.'''
     def __init__(self, questionFile, enableMathJax=True, registerAll=False,
-                 adminIP='127.0.0.1', **kwargs):
+                 adminIP='127.0.0.1', monitorClass=TrivialMonitor, **kwargs):
         self.enableMathJax = enableMathJax
         if enableMathJax:
             webui.Document._defaultHeader = '''<script type="text/x-mathjax-config">
@@ -42,7 +46,7 @@ class Server(object):
         self.questions = {}
         if questionFile:
             self.serve_question(self.courseDB.questions[0])
-        self.monitor = TtyMonitor()
+        self.monitor = monitorClass()
     
     def serve_question(self, question):
         'set the question to be posed to the students'
