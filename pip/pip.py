@@ -192,6 +192,8 @@ class Server(object):
         for i,q in enumerate(self.courseDB.questions):
             doc.add_text('<A HREF="/start_question?q=%d">%s</A>'
                          % (i, q.title), 'LI')
+        doc.add_text('Admin Functions', 'h1')
+        doc.add_text('<A HREF="/exit">Shut Down</A>', 'LI')
         return str(doc)
 
     def _start_question(self, q):
@@ -208,6 +210,11 @@ class Server(object):
         round 2, then click here to
         <A HREF="/prototype_form">view initial results</A>.'''
 
+    def _exit(self):
+        s = self.save_responses()
+        print s
+        raise SystemExit(0)
+
     d = dict(admin='self._admin_page',
              start_question='self._start_question',
              start_round2='self._start_round2',
@@ -217,7 +224,8 @@ class Server(object):
              correct='self.question.correct',
              add_correct='self.question.add_correct',
              analysis='self.question.analysis',
-             save_responses='self.question.save_responses')
+             save_responses='self.question.save_responses',
+             exit='self._exit')
     for name,funcstr in d.items(): # create authenticated admin methods
         exec '''%s=lambda self, **kwargs:self.auth_admin(%s, **kwargs)
 %s.exposed = True''' % (name, funcstr, name)
@@ -268,3 +276,12 @@ def test(title='Monty Hall',
     s.serve_question(q)
     s.start()
     return s
+
+if __name__ == '__main__':
+    import sys
+    if len(sys.argv) < 2:
+        print 'Usage: %s QUESTIONFILE.csv' % sys.argv[0]
+    s = Server(sys.argv[1])
+    s.serve_forever()
+
+    
