@@ -212,7 +212,7 @@ class Server(object):
         <A HREF="/prototype_form">view initial results</A>.'''
 
     def _exit(self):
-        s = self.save_responses()
+        s = self.save_all_responses()
         print s
         raise SystemExit(0)
 
