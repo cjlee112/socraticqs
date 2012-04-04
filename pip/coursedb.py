@@ -23,8 +23,10 @@ class Student(object):
 
 class CourseDB(object):
     def __init__(self, questionFile=None, studentFile=None,
-                 dbfile='course.db', createSchema=False, nmax=1000):
+                 dbfile='course.db', createSchema=False, nmax=1000,
+                 enableMath=False):
         self.dbfile = dbfile
+        self.enableMath = enableMath
         self.logins = set()
         codes = range(nmax)
         random.shuffle(codes) # short but random unique IDs for students
@@ -198,9 +200,10 @@ class CourseDB(object):
                       (t[0], t[1], date.today().isoformat()))
             klass = questionTypes[t[0]]
             if t[0] == 'mc':
-                q = klass(c.lastrowid, t[1], t[2], t[3], t[4], t[5:]) # multiple choice answer
+                q = klass(c.lastrowid, t[1], t[2], t[3], t[4], t[5:],
+                          enableMath=self.enableMath) # multiple choice answer
             else:
-                q = klass(c.lastrowid, *t[1:])
+                q = klass(c.lastrowid, enableMath=self.enableMath, *t[1:])
             q.courseDB = self
             l.append(q)
         self.questions = l
@@ -367,3 +370,10 @@ def simple_rst(s, lineStart='\n'):
     s = re.sub(r'\$\$([^$]+)\$\$\s*', '\n%s.. math:: \\1\n%s'
                % (lineStart, lineStart), s) # treat as displaymath
     return s
+
+
+if __name__ == '__main__':
+    import sys
+    if len(sys.argv) < 2:
+        print 'Usage: %s STUDENTFILE.csv' % sys.argv[0]
+    CourseDB(studentFile=sys.argv[1]) # insert students into default DB

@@ -38,7 +38,8 @@ class Server(object):
             <script type="text/javascript" src="/MathJax/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
             '''
         self.adminIP = adminIP
-        self.courseDB = CourseDB(questionFile, **kwargs)
+        self.courseDB = CourseDB(questionFile, enableMath=enableMathJax,
+                                 **kwargs)
         self._registerHTML = login.register_form()
         self.registerAll = registerAll
         self._loginHTML = login.login_form()
@@ -260,7 +261,7 @@ class Server(object):
         self.courseDB.load_question_file(qfile)
         print 'Loaded %d questions' % len(self.courseDB.questions)
 
-    def save_responses(self):
+    def save_all_responses(self):
         for q in self.questions.values():
             print q.save_responses()
         

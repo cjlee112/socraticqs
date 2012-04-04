@@ -659,7 +659,7 @@ class QuestionBase(object):
 
 
 class QuestionChoice(QuestionBase):
-    def build_form(self, form, explanation, correctChoice, choices):
+    def build_form(self, form, explanation, correctChoice, choices, **kwargs):
         'ask the user to choose an option'
         self._navHTML = self.nav_html(False)
         for i in range(len(choices)): # add all choices as categories
@@ -722,13 +722,14 @@ class QuestionChoice(QuestionBase):
 class QuestionText(QuestionBase):
     def build_form(self, form, correctText,
                    instructions=r'''<br>
-    Briefly state your answer to the question
-    in the box below.  You may enter latex equations by enclosing them in
+    Briefly state your answer to the question in the box below.<br>
+    ''',
+                   mathHint=r'''You may enter latex equations by enclosing them in
     pairs of dollar signs, e.g. \$\$\sum_{\alpha}{p(\alpha|Z)}=1\$\$
     or as an inline equation bracketed on the left by a backslash
     followed by open-parenthesis and on the right by a backslash
     followed by close-parenthesis.<br>
-    ''', maxview=100):
+    ''', maxview=100, enableMath=False):
         'ask the user to enter a text answer'
         self._navHTML = self.nav_html()
         self._correctText = correctText
@@ -736,6 +737,8 @@ class QuestionText(QuestionBase):
         self.categories[self.correctAnswer] = []
         self.maxview = maxview
         self.doc.append(webui.Data(instructions))
+        if enableMath:
+            self.doc.append(webui.Data(mathHint))
         self._append_to_form(form)
 
     def _append_to_form(self, form, suffix='', conf=True):
@@ -764,7 +767,7 @@ class QuestionText(QuestionBase):
 class QuestionUpload(QuestionBase):
     maxSize = 500000 # don't show images bigger than 500kb
     def build_form(self, form, correctFile, stem='q',
-                   imageDir='static/images', maxview=10):
+                   imageDir='static/images', maxview=10, **kwargs):
         'ask the user to upload an image file'
         self._navHTML = self.nav_html()
         self._correctFile = correctFile
@@ -835,7 +838,7 @@ questionTypes = dict(mc=QuestionChoice,
 
 class QuestionSet(QuestionBase):
     'creates a single form that wraps multiple questions'
-    def build_form(self, form, questions):
+    def build_form(self, form, questions, **kwargs):
         self.questions = questions
         self.qsAnswered = set()
         self._navHTML = ''
