@@ -218,11 +218,13 @@ class CourseDB(object):
         c = conn.cursor()
         n = 0
         try:
+            saved = []
             for r in question.responses.values(): # insert rows
                 dt = datetime.fromtimestamp(r.timestamp)
-                c.execute('''insert into responses values
-                (NULL,?,?,?,?,?,?,?,datetime(?),?,?,?,?,?,?,?)''',
-                          (r.uid, question.id, get_id(r, 'prototype'),
+                c.execute('''insert or replace into responses values
+                (?,?,?,?,?,?,?,?,datetime(?),?,?,?,?,?,?,?)''',
+                          (getattr(r, 'id', None),
+                           r.uid, question.id, get_id(r, 'prototype'),
                            question.is_correct(r),
                            r.get_answer(), getattr(r, 'path', None),
                            r.confidence,
@@ -234,8 +236,10 @@ class CourseDB(object):
                            getattr(r, 'finalConfidence', None),
                            get_id(r, 'critiqueTarget'),
                            getattr(r, 'criticisms', None)))
-                r.id = c.lastrowid # record its primary key
+                saved.append((r, c.lastrowid))
             conn.commit()
+            for r,rowID in saved: # record commited row IDs
+                r.id = rowID # record its primary key
             n = len(question.responses)
         finally:
             c.close()
