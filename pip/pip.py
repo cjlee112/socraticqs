@@ -53,6 +53,7 @@ class Server(object):
         'set the question to be posed to the students'
         self.question = question
         question.courseDB = self.courseDB
+        question.server = self
         self.questions[question.id] = question # add to our lookup
         
     def start(self):
@@ -193,16 +194,25 @@ class Server(object):
         for i,q in enumerate(self.courseDB.questions):
             doc.add_text('<A HREF="/start_question?q=%d">%s</A>'
                          % (i, q.title), 'LI')
-        doc.add_text('Admin Functions', 'h1')
-        doc.add_text('<A HREF="/exit">Shut Down</A>', 'LI')
+        doc.add_text(self.admin_nav())
         return str(doc)
+
+    def admin_nav(self):
+        s = '''<HR>
+        <A HREF="/admin" TITLE="Choose a question to start">START</A> &gt
+        <A HREF="/prototype_form" TITLE="See student responses">MONITOR</A> &gt
+        <A HREF="/analysis" TITLE="See how many students got the answer right">ASSESS</A> &gt
+        <A HREF="/save_responses" TITLE="Save the latest responses to the database">SAVE</A> &gt
+        [<A HREF="/exit" TITLE="Save and quit">SHUTDOWN</A>]
+        '''
+        return s
 
     def _start_question(self, q):
         question = self.courseDB.questions[int(q)]
         self.serve_question(question)
-        return '''Successfully setup %s.
-        Once the students have entered their answers, click here to
-        <A HREF="/start_round2">start round 2</A>.''' % question.title
+        s = 'Successfully setup %s.\n' % question.title
+        s += self.admin_nav()
+        return s
 
     def _start_round2(self, **kwargs):
         if self.question.count_unclustered(): # need to do clustering
@@ -225,7 +235,7 @@ class Server(object):
              correct='self.question.correct',
              add_correct='self.question.add_correct',
              analysis='self.question.analysis',
-             save_responses='self.question.save_responses',
+             save_responses='self.save_all_responses',
              exit='self._exit')
     for name,funcstr in d.items(): # create authenticated admin methods
         exec '''%s=lambda self, **kwargs:self.auth_admin(%s, **kwargs)
@@ -262,8 +272,12 @@ class Server(object):
         print 'Loaded %d questions' % len(self.courseDB.questions)
 
     def save_all_responses(self):
+        n = 0
         for q in self.questions.values():
-            print q.save_responses()
+            n += self.courseDB.save_responses(q)
+        s = 'Saved %d responses.\n' % n
+        s += self.admin_nav()
+        return s
         
 def test(title='Monty Hall',
          text=r'''The probability of winning by switching your choice is:

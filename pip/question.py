@@ -207,9 +207,9 @@ class QuestionBase(object):
 
     def nav_html(self, cluster=True):
         s = '''<HR>
-        <A HREF="/">START</A> &gt
-        <A HREF="%s">DISCUSS</A> &gt
-        <A HREF="%s">ASSESS</A> &gt
+        <A HREF="/" TITLE="Answer the current question">START</A> &gt
+        <A HREF="%s" TITLE="Report whether discussion changed your mind">DISCUSS</A> &gt
+        <A HREF="%s" TITLE="Report how your answer compared with the correct solution">ASSESS</A> &gt
         [<A HREF="/logout">LOGOUT</A>]
         ''' % (self.get_url('reconsider'), self.get_url('assess'))
         return s
@@ -493,6 +493,7 @@ class QuestionBase(object):
                          % (offset + maxview, maxview, maxview))
         doc.add_text('''<br>If you want to "declare victory", click here to
         proceed to the <A HREF="/cluster_report">cluster report</A>.''')
+        doc.add_text(self.server.admin_nav())
         return str(doc)
 
     def include_correct(self):
@@ -532,6 +533,7 @@ class QuestionBase(object):
             doc.append(self.get_choice_form('correct', False, 0, fmt))
             doc.add_text(self._gotoVoteHTML)
             self.init_vote()
+        doc.add_text(self.server.admin_nav())
         return str(doc)
 
     def correct(self, choice):
@@ -550,9 +552,11 @@ class QuestionBase(object):
         self.list_categories(True) # force this to update
         self._clusterFormHTML = self.build_cluster_form()
         self.noMatch.clear()
-        return '''Added %d categories.  Tell the students to categorize
+        s = '''Added %d categories.  Tell the students to categorize
         themselves vs. your new categories.  When they are done,
-        click here to <A HREF="/prototype_form">continue</A>.''' % n
+        click here to <A HREF="/prototype_form">continue</A>.\n''' % n
+        s += self.server.admin_nav()
+        return s
 
     def list_categories(self, update=False):
         if not update and getattr(self, 'categoriesSorted', False):
@@ -603,7 +607,7 @@ class QuestionBase(object):
         d1, d2, d3 = self.count_rounds()
         t = webui.Table('%d Responses' % len(self.responses),
                         ('answer','initial', 'revised', 'final'))
-        for i,category in enumerate(self.categoriesSorted):
+        for i,category in enumerate(self.list_categories()):
             a = letters[i]
             if category == self.correctAnswer: # bold the correct answer
                 a = '<B>' + a + '</B>'
@@ -631,8 +635,7 @@ class QuestionBase(object):
                 for s in l:
                     doc.add_text(s, 'LI')
             doc.add_text('<HR>\n')
-        doc.add_text('''Click here to <A HREF="/save_responses">save 
-        all student responses to the database</A>.''')
+        doc.add_text(self.server.admin_nav())
         return str(doc)
 
     def save_responses(self):
