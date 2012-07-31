@@ -463,10 +463,17 @@ class QuestionBase(object):
         if unclustered == 0:
             return self.cluster_report()
         doc = webui.Document(title)
+        doc.add_text('''<B>Instructions</B>: if you wish, you can choose
+        individual responses as distinct categories of answers, and
+        then ask the students to assign themselves to these categories.
+        However, this is purely optional.''')
         if self.categories: # not empty
             doc.add_text('%d Categories' % len(self.categories), 'h1')
             for r in self.categories:
-                doc.add_text(str(r))
+                if r == self.correctAnswer:
+                    doc.add_text('<B>correct</B>: ' + str(r), 'LI')
+                else:
+                    doc.add_text(str(r), 'LI')
         doc.add_text('%d Uncategorized Responses' % unclustered, 'h1')
         doc.add_text('''Choose one or more responses as new, distinct
         categories of student answers:<br>
@@ -600,17 +607,23 @@ class QuestionBase(object):
         return d1, d2, d3
 
     def analysis(self, title='Final Results'):
-        f = 100. / len(self.responses)
+        if self.responses:
+            f = 100. / len(self.responses)
+        else: # avoid division by zero error
+            f = 1.
         def perc(d, k):
             return '%1.0f%%' % (d.get(k, 0) * f)
         doc = webui.Document(title)
+        doc.add_text('''<B>Instructions</B>: This table shows the
+        fraction of students that got the correct answer,
+        or gave no response (NR).''')
         d1, d2, d3 = self.count_rounds()
         t = webui.Table('%d Responses' % len(self.responses),
                         ('answer','initial', 'revised', 'final'))
         for i,category in enumerate(self.list_categories()):
             a = letters[i]
             if category == self.correctAnswer: # bold the correct answer
-                a = '<B>' + a + '</B>'
+                a = '<B>' + a + '</B> (correct)'
             t.append((a, perc(d1, category), perc(d2, category),
                       perc(d3, category)))
         t.append(('NR', '0%', perc(d2, None), perc(d3, None)))

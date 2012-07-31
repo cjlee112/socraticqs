@@ -191,8 +191,12 @@ class Server(object):
         doc = webui.Document('PIPS Console')
         doc.add_text('%d students logged in.' % len(self.courseDB.logins))
         doc.add_text('Concept Tests', 'h1')
+        doc.add_text('''<B>Instructions</B>: click on a question to start
+        the students on that question.  Then click on whatever stage
+        you wish on the navigation bar at the bottom of the page.''')
         for i,q in enumerate(self.courseDB.questions):
-            doc.add_text('<A HREF="/start_question?q=%d">%s</A>'
+            doc.add_text('''<A HREF="/start_question?q=%d"
+            TITLE="Start the students on this question">%s</A>'''
                          % (i, q.title), 'LI')
         doc.add_text(self.admin_nav())
         return str(doc)
