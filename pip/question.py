@@ -2,6 +2,7 @@ import cherrypy
 import os.path
 import time
 import webui
+import forms
 import subprocess
 
 letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
@@ -15,53 +16,6 @@ def missing_params(*args):
         if arg is None:
             return True
 
-def add_confidence_choice(form, levels=('Just guessing', 'Not quite sure',
-                                        'Pretty sure')):
-    form.append('<br>\nHow confident are you in your answer?<br>\n')
-    form.append(webui.RadioSelection('confidence', list(enumerate(levels))))
-    
-def build_reconsider_form(qid, bottom='', title='Reconsidering your answer'):
-    'return HTML for standard form for round 2'
-    doc = webui.Document(title)
-    doc.add_text('''<B>Instructions</B>: As soon as your partner is
-    ready, please take turns explaining why you think your
-    answer is right, approximately one minute each.
-    Then answer the following questions:<BR>
-    ''')
-    form = webui.Form('submit')
-    form.append(webui.Input('qid', 'hidden', str(qid)))
-    form.append(webui.Input('stage', 'hidden', 'reconsider'))
-    d = dict(unchanged='I still prefer my original answer.',
-             switched="I've decided my partner's answer is better (enter his/her name below).")
-    form.append(webui.RadioSelection('status', d.items(),
-                                     selected='unchanged'))
-    add_confidence_choice(form)
-    form.append("<br>\nYour partner's username (only needed if you prefer their answer):")
-    form.append(webui.Input('partner'))
-    form.append('<br>\n')
-    doc.append(form)
-    doc.add_text(bottom)
-    return str(doc)
-
-def build_assess_form(qid, bottom='', title='Assessing your answer'):
-    'return HTML for standard form for round 2'
-    doc = webui.Document(title)
-    doc.add_text('''How does your answer compare with the right answer?
-    If your answer was different, please briefly explain below how your
-    reasoning differed.''', 'B')
-    form = webui.Form('submit')
-    form.append(webui.Input('qid', 'hidden', str(qid)))
-    form.append(webui.Input('stage', 'hidden', 'assess'))
-    options = (('correct', 'Essentially the same.'),
-               ('close', 'Close.'),
-               ('different', 'Different.'))
-    form.append(webui.RadioSelection('assessment', options))
-    form.append("<br>\nHow your reasoning differed:<br>\n")
-    form.append(webui.Textarea('differences'))
-    form.append('<br>\n')
-    doc.append(form)
-    doc.add_text(bottom)
-    return str(doc)
 
 
 class Response(object):
@@ -170,8 +124,9 @@ class QuestionBase(object):
         self._afterURL = self.get_url('assess')
         self._viewHTML = {
             'answer': str(doc),
-            'reconsider': build_reconsider_form(questionID, self._navHTML),
-            'assess': build_assess_form(questionID, self._navHTML)
+            'reconsider': forms.build_reconsider_form(questionID,
+                                                      self._navHTML),
+            'assess': forms.build_assess_form(questionID, self._navHTML)
             }
         self._clusterFormHTML = \
             '''No categories have yet been added.
@@ -373,7 +328,7 @@ class QuestionBase(object):
             l.append((i, s))
         form.append(webui.RadioSelection('choice', l))
         if confidenceChoice:
-            add_confidence_choice(form)
+            forms.add_confidence_choice(form)
         form.append('<br>\n')
         return form
 
@@ -791,7 +746,7 @@ class QuestionChoice(QuestionBase):
             l.append((i, '<B>%s</B>. %s' % (letters[i], s)))
         form.append(webui.RadioSelection('choice' + suffix, l))
         if conf:
-            add_confidence_choice(form)
+            forms.add_confidence_choice(form)
         form.append('<br>\n')
 
     def answer(self, uid, choice=None, confidence=None, monitor=None):
@@ -858,7 +813,7 @@ class QuestionText(QuestionBase):
     def _append_to_form(self, form, suffix='', conf=True):
         form.append(webui.Textarea('answer' + suffix))
         if conf:
-            add_confidence_choice(form)
+            forms.add_confidence_choice(form)
         form.append('<br>\n')
 
     def answer(self, uid, answer=None, confidence=None, monitor=None):
@@ -903,7 +858,7 @@ class QuestionUpload(QuestionBase):
         you cannot submit your answer as an image:<br>''')
         form.append(webui.Textarea('answer2' + suffix))
         if conf:
-            add_confidence_choice(form)
+            forms.add_confidence_choice(form)
         form.append('<br>\n')
 
     def answer(self, uid, image=None, answer2='', confidence=None,

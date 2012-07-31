@@ -1,7 +1,7 @@
 import cherrypy
 import webui
 import thread
-import login
+import forms
 from coursedb import CourseDB
 from question import QuestionSet
 
@@ -40,9 +40,9 @@ class Server(object):
         self.adminIP = adminIP
         self.courseDB = CourseDB(questionFile, enableMath=enableMathJax,
                                  **kwargs)
-        self._registerHTML = login.register_form()
+        self._registerHTML = forms.register_form()
         self.registerAll = registerAll
-        self._loginHTML = login.login_form()
+        self._loginHTML = forms.login_form()
         self._reloadHTML = redirect()
         self.questions = {}
         if questionFile:
