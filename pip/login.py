@@ -1,7 +1,7 @@
 import webui
 
 def login_form(action='login',
-               text='Please login to PIPS using your username and UCLA ID:<br>\n',
+               text='Please login to Socraticqs using your username and Student ID:<br>\n',
                registerText='''<br>
                If you have never logged in, click here to
                <A HREF="/register_form">register</A>.
@@ -19,7 +19,7 @@ def login_form(action='login',
 
 def register_form(action='register',
                   text='''Please register by choosing a username, and
-                  entering your full name and UCLA ID:<br>\n''',
+                  entering your full name and Student ID:<br>\n''',
                   loginText='''<br>
                   If you have already registered, click here to
                   <A HREF="/login_form">login</A>.

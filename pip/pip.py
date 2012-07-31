@@ -188,24 +188,26 @@ class Server(object):
             return '<h1>Access denied</h1>'
 
     def _admin_page(self):
-        doc = webui.Document('PIPS Console')
+        doc = webui.Document('Socraticqs Console')
         doc.add_text('%d students logged in.' % len(self.courseDB.logins))
         doc.add_text('Concept Tests', 'h1')
-        doc.add_text('''<B>Instructions</B>: click on a question to start
-        the students on that question.  Then click on whatever stage
-        you wish on the navigation bar at the bottom of the page.''')
         for i,q in enumerate(self.courseDB.questions):
             doc.add_text('''<A HREF="/start_question?q=%d"
             TITLE="Start the students on this question">%s</A>'''
                          % (i, q.title), 'LI')
+        doc.add_text('''<B>Instructions</B>: click on a question to start
+        the students on that question.
+        At any time you may use the navigation bar
+        at the bottom of the page to go to whatever stage
+        you wish.''')
         doc.add_text(self.admin_nav())
         return str(doc)
 
     def admin_nav(self):
         s = '''<HR>
         <A HREF="/admin" TITLE="Choose a question to start">START</A> &gt
-        <A HREF="/prototype_form" TITLE="See student responses">MONITOR</A> &gt
-        <A HREF="/analysis" TITLE="See how many students got the answer right">ASSESS</A> &gt
+        <A HREF="/qadmin" TITLE="See student responses to this question">MONITOR</A> &gt
+        <A HREF="/qassess" TITLE="See how many students got the answer right">ASSESS</A> &gt
         <A HREF="/save_responses" TITLE="Save the latest responses to the database">SAVE</A> &gt
         [<A HREF="/exit" TITLE="Save and quit">SHUTDOWN</A>]
         '''
@@ -214,9 +216,7 @@ class Server(object):
     def _start_question(self, q):
         question = self.courseDB.questions[int(q)]
         self.serve_question(question)
-        s = 'Successfully setup %s.\n' % question.title
-        s += self.admin_nav()
-        return s
+        return question.start_admin()
 
     def _start_round2(self, **kwargs):
         if self.question.count_unclustered(): # need to do clustering
@@ -232,6 +232,8 @@ class Server(object):
 
     d = dict(admin='self._admin_page',
              start_question='self._start_question',
+             qadmin='self.question.start_admin',
+             qassess='self.question.assess_admin',
              start_round2='self._start_round2',
              prototype_form='self.question.prototype_form',
              add_prototypes='self.question.add_prototypes',

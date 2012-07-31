@@ -23,6 +23,11 @@ def add_confidence_choice(form, levels=('Just guessing', 'Not quite sure',
 def build_reconsider_form(qid, bottom='', title='Reconsidering your answer'):
     'return HTML for standard form for round 2'
     doc = webui.Document(title)
+    doc.add_text('''<B>Instructions</B>: As soon as your partner is
+    ready, please take turns explaining why you think your
+    answer is right, approximately one minute each.
+    Then answer the following questions:<BR>
+    ''')
     form = webui.Form('submit')
     form.append(webui.Input('qid', 'hidden', str(qid)))
     form.append(webui.Input('stage', 'hidden', 'reconsider'))
@@ -139,6 +144,7 @@ class QuestionBase(object):
         self.id = questionID
         self.title = title
         self.text = text
+        self.refresh = 15
         self.categories = {}
         for attr in ('hasReasons', 'isClustered', 'noMatch', 'hasFinalVote',
                      'hasCritique'):
@@ -215,11 +221,8 @@ class QuestionBase(object):
         return s
 
     def answer_msg(self):
-        return '''Thanks for answering!  As soon as your partner is
-        ready, please take turns explaining why you think your
-        answer is right, approximately one minute each.
-        Then click the DISCUSS link below to record whether
-        you changed your mind or not.''' \
+        return '''Thanks for answering!  Your instructor will tell you
+        what step to continue to next.''' \
         + self._navHTML
     
     def reconsider(self, uid, status=None, confidence=None,
@@ -251,9 +254,7 @@ class QuestionBase(object):
         if monitor:
             monitor.message('recons: %d of %d total'
                             % (len(self.hasReasons), len(self.responses)))
-        return '''Thanks! When your instructor asks you to, please click here to
-            continue to <A HREF="%s">%s</A>.%s''' \
-            % (self._afterURL, self._afterText, self._navHTML)
+        return self.answer_msg()
 
     def assess(self, uid, assessment=None, differences=None, monitor=None):
         if not assessment or (assessment != 'correct' and not differences):
@@ -456,6 +457,99 @@ class QuestionBase(object):
         <A HREF="/">continue</A>.''' + self._navHTML
 
     # instructor interfaces
+    def start_admin(self, starttimer=0, showresp=''):
+        doc = webui.Document('Socraticqs Admin')
+        doc.add_text(self.title, 'H1')
+        doc.add_text(self.text, 'BIG')
+        doc.add_text('<HR>\n')
+        if starttimer: # start the timer
+            self.starttime = time.time()
+        if hasattr(self, 'starttime'): # show timer, progress stats
+            elapsed = int(time.time() - self.starttime)
+            doc.add_text('Time since start: %d:%02d'
+                         % (elapsed / 60, elapsed % 60))
+            doc.add_text(' (updates every %d sec)' % self.refresh)
+            doc.add_text('<BR>\n')
+            t = webui.Table('Student Answers So Far',
+                            ('Just guessing', 'Not quite sure',
+                             'Pretty sure', '(not yet)', ))
+            doc.append(t)
+            if showresp:
+                doc.add_text('<BR>\n(<A HREF="/qadmin">hide answers</A>)<BR>\n')
+            else:
+                doc.add_text('<BR>\n(<A HREF="/qadmin?showresp=1">show answers</A>)<BR>\n')
+            counts = [0, 0, 0]
+            for r in self.responses.values():
+                if showresp:
+                    doc.add_text(str(r), 'LI')
+                counts[r.confidence] += 1
+            counts.append(len(self.courseDB.logins) - len(self.responses))
+            t.append(counts)
+            doc.add_text('''<BR><B>Instructions</B>: when you feel
+            enough students have responded (totally up to you), tell
+            the students what stage to proceed to.  E.g. you could ask
+            them to discuss their answer with their neighbor (and if you
+            wish, tell them to click the DISCUSS link to report whether
+            this changed their minds).  Or you could proceed directly
+            to the ASSESS stage to present the solution and have the
+            students self-assess.
+            Note: you may use the navigation bar below to
+            jump forward to another stage or question at any time.''')
+            doc.head.append('<meta http-equiv="Refresh" content="%d; url=%s?showresp=%s">\n'
+                            % (self.refresh, '/qadmin', showresp))
+        else: # show instructions, GO button
+            doc.add_text('''<B>Instructions</B>: present the question to the
+            students.  When you tell them to start, click the Go button
+            to begin the timer.
+            For a concept test, typically give them a minute to think
+            about the question, and a minute or two to enter an answer.''')
+            form = webui.Form('/qadmin')
+            form.append(webui.Input('starttimer', 'hidden', '1'))
+            doc.append(form)
+        doc.add_text(self.server.admin_nav())
+        return str(doc)
+
+    def assess_admin(self, showresp=''):
+        doc = webui.Document('Socraticqs Admin')
+        doc.add_text(self.title + ' Answer', 'H1')
+        if hasattr(self, 'correctAnswer'):
+            doc.add_text(str(self.correctAnswer), 'BIG')
+            doc.add_text('<HR>\n')
+        if hasattr(self, 'starttime'): # show timer, progress stats
+            elapsed = int(time.time() - self.starttime)
+            doc.add_text('Time since start: %d:%02d'
+                         % (elapsed / 60, elapsed % 60))
+            doc.add_text(' (updates every %d sec)' % self.refresh)
+            doc.add_text('<BR>\n')
+            t = webui.Table('Self-Assessments So Far',
+                            ('Different', 'Close',
+                             'Correct', '(not yet)', ))
+            doc.append(t)
+            if showresp:
+                doc.add_text('<BR>\n(<A HREF="/qassess">hide self-assessments</A>)<BR>\n')
+            else:
+                doc.add_text('<BR>\n(<A HREF="/qassess?showresp=1">show self-assessments</A>)<BR>\n')
+            counts = {}
+            for r in self.responses.values():
+                if showresp and getattr(r, 'criticisms', False):
+                    doc.add_text(r.criticisms, 'LI')
+                try:
+                    counts[r.reasons] = counts.get(r.reasons, 0) + 1
+                except AttributeError:
+                    pass
+            t.append((counts.get('different', 0), counts.get('close', 0),
+                      counts.get('correct', 0),
+                      len(self.responses) - sum(counts.values())))
+            doc.add_text('''<BR><B>Instructions</B>:
+            present the answer to the students,
+            and ask them to click ASSESS to enter their self-assessment.
+            Note: you may click START below to
+            jump forward to another question at any time.''')
+            doc.head.append('<meta http-equiv="Refresh" content="%d; url=%s?showresp=%s">\n'
+                            % (self.refresh, '/qassess', showresp))
+        doc.add_text(self.server.admin_nav())
+        return str(doc)
+
     def prototype_form(self, offset=0, maxview=None,
                        title='Categorize Responses'):
         offset = int(offset)
@@ -466,7 +560,9 @@ class QuestionBase(object):
         doc.add_text('''<B>Instructions</B>: if you wish, you can choose
         individual responses as distinct categories of answers, and
         then ask the students to assign themselves to these categories.
-        However, this is purely optional.''')
+        However, this is purely <B>optional</B>.
+        Click here to <A HREF="/prototype_form">UPDATE</A> for the
+        latest results.''')
         if self.categories: # not empty
             doc.add_text('%d Categories' % len(self.categories), 'h1')
             for r in self.categories:
@@ -616,7 +712,9 @@ class QuestionBase(object):
         doc = webui.Document(title)
         doc.add_text('''<B>Instructions</B>: This table shows the
         fraction of students that got the correct answer,
-        or gave no response (NR).''')
+        or gave no response (NR).  Uncategorized responses are not
+        shown.  Click here to <A HREF="/analysis">UPDATE</A> for the
+        latest results.''')
         d1, d2, d3 = self.count_rounds()
         t = webui.Table('%d Responses' % len(self.responses),
                         ('answer','initial', 'revised', 'final'))
