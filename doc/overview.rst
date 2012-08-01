@@ -20,8 +20,8 @@ Concretely it is:
 * it captures all student responses in a database (sqlite3)
   for generating reports and whatever data analysis you want.
 
-It differs from existing "e-learning" packages such as Moodle
-in that
+It differs from existing "e-learning" packages such as 
+`Moodle <http://moodle.org>`_ in that
 
 * it's designed to be used *in-class* to ask all the students
   to answer a question, and optionally discuss their answers
@@ -39,7 +39,9 @@ in that
   it reveals the specific conceptual errors the students are
   making.
 
-* it supports *Peer Instruction*, in which students are paired
+* it supports
+  `Peer Instruction <http://mazur.harvard.edu/research/detailspage.php?ed=1&rowid=8>`_,
+  in which students are paired
   (with the person sitting next to them in class) to present
   their answers to each other and see whether they find each
   other's arguments convincing.
