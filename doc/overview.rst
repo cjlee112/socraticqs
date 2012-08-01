@@ -9,9 +9,9 @@ What is Socraticqs?
 Socraticqs is an open-source In-Class Question System designed
 for teaching by asking questions that
 students answer in-class using their laptops or smartphones.
-Concretely it is:
+Concretely:
 
-* a lightweight web server written in Python
+* it is a lightweight web server written in Python
   (usually run on the instructor's laptop)
   that students point their web browsers at, giving them an
   easy interface for answering the questions you assign.
@@ -31,12 +31,12 @@ It differs from existing "e-learning" packages such as
 * it's designed to be fast, lightweight and simple, for use in class,
   typically running the Socraticqs server on the instructor's laptop.
 
-* it supports a *concept testing* methodology.  That is, the
+* it supports a *concept testing* methodology.  That is,
   each question should probe understanding of a single concept
   in a way that requires thought rather than mechanics.
   Moreover, by allowing freeform response (students type short
   text or equation answers) rather than just multiple choice,
-  it reveals the specific conceptual errors the students are
+  it reveals the specific conceptual errors that students are
   making.
 
 * it supports
