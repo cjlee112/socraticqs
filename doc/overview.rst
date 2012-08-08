@@ -86,6 +86,8 @@ Socraticqs requires
 
 * `Python <http://python.org>`_
 * `CherryPy <http://cherrypy.org>`_
+* If you want equation display support, you also need 
+  `MathJax <http://www.mathjax.org/>`_
 
 You install Socraticqs by simply downloading and unarchiving it.
 You then run it via commands like::
