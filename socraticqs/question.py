@@ -94,10 +94,14 @@ class ImageResponse(ClusteredResponse):
         return s
 
 class QuestionBase(object):
-    def __init__(self, questionID, title, text, *args, **kwargs):
+    def __init__(self, questionID, title, text, explanation, nerror, *args, **kwargs):
         self.id = questionID
         self.title = title
         self.text = text
+        self.explanation = explanation
+        nerror = int(nerror)
+        self.errorModels = args[:nerror]
+        args = args[nerror:] # skip past error models
         self.refresh = 15
         self.categories = {}
         for attr in ('hasReasons', 'isClustered', 'noMatch', 'hasFinalVote',
@@ -126,7 +130,7 @@ class QuestionBase(object):
             'answer': str(doc),
             'reconsider': forms.build_reconsider_form(questionID,
                                                       self._navHTML),
-            'assess': forms.build_assess_form(questionID, self._navHTML)
+            'assess': forms.build_assess_form(questionID, self.errorModels, self._navHTML)
             }
         self._clusterFormHTML = \
             '''No categories have yet been added.
@@ -211,7 +215,7 @@ class QuestionBase(object):
                             % (len(self.hasReasons), len(self.responses)))
         return self.answer_msg()
 
-    def assess(self, uid, assessment=None, differences=None, monitor=None):
+    def assess(self, uid, assessment=None, errors=(), differences=None, monitor=None):
         if not assessment or (assessment != 'correct' and not differences):
             return _missing_arg_msg
         try:
@@ -219,6 +223,7 @@ class QuestionBase(object):
         except KeyError:
             return self._noResponseHTML
         response.reasons = assessment
+        response.errorIDs = [self.errorIDs[int(e)] for e in errors]
         if assessment == 'correct': # categorize as right answer
             self.set_prototype(response, self.correctAnswer)
         else:
@@ -728,7 +733,7 @@ class QuestionBase(object):
 
 
 class QuestionChoice(QuestionBase):
-    def build_form(self, form, explanation, correctChoice, choices, **kwargs):
+    def build_form(self, form, correctChoice, *choices, **kwargs):
         'ask the user to choose an option'
         self._navHTML = self.nav_html(False)
         for i in range(len(choices)): # add all choices as categories
@@ -737,7 +742,6 @@ class QuestionChoice(QuestionBase):
                 self.correctAnswer = r
             self.categories[r] = []
         self.choices = choices
-        self.explanation = explanation
         self._append_to_form(form)
 
     def _append_to_form(self, form, suffix='', conf=True):
@@ -789,7 +793,7 @@ class QuestionChoice(QuestionBase):
 
         
 class QuestionText(QuestionBase):
-    def build_form(self, form, correctText,
+    def build_form(self, form, 
                    instructions=r'''<br>
     Briefly state your answer to the question in the box below.<br>
     ''',
@@ -801,8 +805,7 @@ class QuestionText(QuestionBase):
     ''', maxview=100, enableMath=False):
         'ask the user to enter a text answer'
         self._navHTML = self.nav_html()
-        self._correctText = correctText
-        self.correctAnswer = TextResponse(0, self, 0, self._correctText)
+        self.correctAnswer = TextResponse(0, self, 0, self.explanation)
         self.categories[self.correctAnswer] = []
         self.maxview = maxview
         self.doc.append(webui.Data(instructions))
@@ -827,7 +830,7 @@ class QuestionText(QuestionBase):
         return self.answer_msg()
 
     def add_correct(self):
-        self.correctAnswer = TextResponse(0, self, 0, self._correctText)
+        self.correctAnswer = TextResponse(0, self, 0, self.explanation)
         self.include_correct()
         self.init_vote()
         return 'Great.  ' + self._gotoVoteHTML

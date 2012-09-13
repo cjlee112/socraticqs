@@ -67,7 +67,7 @@ def build_reconsider_form(qid, bottom='', title='Reconsidering your answer'):
     doc.add_text(bottom)
     return str(doc)
 
-def build_assess_form(qid, bottom='', title='Assessing your answer'):
+def build_assess_form(qid, errorModels=(), bottom='', title='Assessing your answer'):
     'return HTML for standard form for round 2'
     doc = webui.Document(title)
     doc.add_text('''How does your answer compare with the right answer?
@@ -80,6 +80,9 @@ def build_assess_form(qid, bottom='', title='Assessing your answer'):
                ('close', 'Close.'),
                ('different', 'Different.'))
     form.append(webui.RadioSelection('assessment', options))
+    if errorModels:
+        form.append("<br>\nDid you make any of the following common errors?<br>\n")
+        form.append(webui.CheckboxSelection('errors', list(enumerate(errorModels))))
     form.append("<br>\nHow your reasoning differed:<br>\n")
     form.append(webui.Textarea('differences'))
     form.append('<br>\n')

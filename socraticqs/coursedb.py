@@ -66,6 +66,19 @@ class CourseDB(object):
             final_conf integer,
             critique_id integer,
             criticisms text)''')
+            c.execute('''create table error_models
+            (id integer primary key,
+            question_id integer,
+            belief text,
+            title text,
+            explanation text,
+            date_added integer)''')
+            c.execute('''create table student_errors
+            (error_id integer,
+            uid integer,
+            argument text,
+            confidence text,
+            submit_time integer)''')
             conn.commit()
         if studentFile:
             self.load_student_file(studentFile, c=c, conn=conn)
@@ -199,12 +212,13 @@ class CourseDB(object):
             c.execute('insert into questions values (NULL,?,?,date(?))',
                       (t[0], t[1], date.today().isoformat()))
             klass = questionTypes[t[0]]
-            if t[0] == 'mc':
-                q = klass(c.lastrowid, t[1], t[2], t[3], t[4], t[5:],
-                          enableMath=self.enableMath) # multiple choice answer
-            else:
-                q = klass(c.lastrowid, enableMath=self.enableMath, *t[1:])
+            q = klass(c.lastrowid, enableMath=self.enableMath, *t[1:])
             q.courseDB = self
+            q.errorIDs = []
+            for e in q.errorModels:
+                c.execute('insert into error_models values (NULL,?,?,NULL,NULL,date(?))',
+                          (q.id, e, date.today().isoformat()))
+                q.errorIDs.append(c.lastrowid)
             l.append(q)
         self.questions = l
 
@@ -237,6 +251,11 @@ class CourseDB(object):
                            get_id(r, 'critiqueTarget'),
                            getattr(r, 'criticisms', None)))
                 saved.append((r, c.lastrowid))
+                if not hasattr(r, 'id'): # save student's reported errors
+                    for e in getattr(r, 'errorIDs', ()):
+                        c.execute('''insert into student_errors values 
+                                     (?,?,NULL,NULL,datetime(?))''',
+                                  (e, r.uid, dt.isoformat().split('.')[0]))
             conn.commit()
             for r,rowID in saved: # record commited row IDs
                 r.id = rowID # record its primary key
