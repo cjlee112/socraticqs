@@ -324,3 +324,7 @@ class RadioSelection(Selection):
     
 class CheckboxSelection(RadioSelection):
     _type = 'checkbox'
+    def __init__(self, *args, **kwargs):
+        RadioSelection.__init__(self, *args, **kwargs)
+        if self.multiple: # make form return array of values
+            self.name = self.name + '[]'
