@@ -83,7 +83,10 @@ def build_assess_form(qid, errorModels=(), bottom='', title='Assessing your answ
     if errorModels:
         form.append("<br>\nDid you make any of the following common errors?<br>\n")
         form.append(webui.CheckboxSelection('errors', list(enumerate(errorModels))))
-    form.append("<br>\nHow your reasoning differed:<br>\n")
+    form.append('''<br>\nIf you made an error not listed above, please
+indicate how your reasoning differed from the right idea.  
+Otherwise, you may leave this blank, or ask any question about
+this problem that still puzzles you:<br>\n''')
     form.append(webui.Textarea('differences'))
     form.append('<br>\n')
     doc.append(form)

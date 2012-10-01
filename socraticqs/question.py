@@ -216,7 +216,8 @@ class QuestionBase(object):
         return self.answer_msg()
 
     def assess(self, uid, assessment=None, errors=(), differences=None, monitor=None):
-        if not assessment or (assessment != 'correct' and not differences):
+        if not assessment or (assessment != 'correct' and not differences
+                              and not errors):
             return _missing_arg_msg
         try:
             response = self.responses[uid]
@@ -771,7 +772,7 @@ class QuestionChoice(QuestionBase):
         self.answer_monitor(monitor)
         return self.answer_msg()
 
-    def assess(self, uid, assessment=None, differences=None, monitor=None):
+    def assess(self, uid, assessment=None, errors=(), differences=None, monitor=None):
         if assessment == 'correct':
             try:
                 response = self.responses[uid]
@@ -783,7 +784,8 @@ class QuestionChoice(QuestionBase):
                 Please click the Back button in your browser to update
                 your response; please indicate how your answer differed from
                 the correct answer.'''
-        return QuestionBase.assess(self, uid, assessment=assessment,
+        return QuestionBase.assess(self, uid, assessment=assessment, 
+                                   errors=errors,
                                    differences=differences, monitor=monitor)
 
     def init_vote(self):
