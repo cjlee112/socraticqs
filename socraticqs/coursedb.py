@@ -1,4 +1,7 @@
-import cherrypy
+try:
+    import cherrypy
+except ImportError: # only needed for web interface, so silently ignore it
+    pass
 import os.path
 import sqlite3
 import csv
@@ -375,14 +378,16 @@ class CourseDB(object):
         if uncategorized:
             s = 'Uncategorized Answers (%d people)' % len(uncategorized)
             print >>ifile, '\n' + s + '\n' + ('.' * len(s)) + '\n'
-            uncategorized.sort(lambda t,u:cmp(t[4],u[4]))
-            for t in uncategorized:
-                s = t[3] + '.  '
-                if t[4]:
-                    s += '(' + t[4] + ').  '
-                if t[-1]:
-                    s += '**Difference:** ' + t[-1]
-                print >>ifile, '* ' + simple_rst(s, '\n  ')
+            mismatch = frozenset([t[4] for t in uncategorized])
+            for status in mismatch:
+                answers = filter(lambda t:t[4] == status, uncategorized)
+                s = '%s (%d people)' % (status, len(answers))
+                print >>ifile, '\n' + s + '\n' + ('+' * len(s)) + '\n'
+                for t in answers:
+                    s = t[3] + '.  '
+                    if t[-1]:
+                        s += '**Difference:** ' + t[-1]
+                    print >>ifile, '* ' + simple_rst(s, '\n  ')
 
 
 def simple_rst(s, lineStart='\n'):
