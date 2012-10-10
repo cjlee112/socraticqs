@@ -1,4 +1,3 @@
-import cherrypy
 import os.path
 import time
 import webui
