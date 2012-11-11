@@ -92,3 +92,32 @@ this problem that still puzzles you:<br>\n''')
     doc.append(form)
     doc.add_text(bottom)
     return str(doc)
+
+def build_quizmode_form(formtitle='Switch to Quiz Mode?',
+                        explanation='''Quiz Mode presents all questions
+                        on a single form, so students answer them all
+                        and then submit the form once.  This is
+                        designed for giving the students a test
+                        rather than the usual mode of walking
+                        them through one exercise at a time.''',
+                        title='Quiz',
+                        instructions='''Please answer all of the following
+                        questions. You must answer all questions.
+                        When you have answered all questions, click Go
+                        to submit your answers.  Note that your submitted
+                        answers are final; you cannot resubmit answers again.'''):
+    doc = webui.Document(formtitle)
+    doc.add_text(explanation)
+    form = webui.Form('quizmode')
+    form.append('<br>\nQuiz Title:\n')
+    form.append(webui.Input('title', value='Quiz', size=50))
+    form.append('<br>\nInstructions for the students:<br>\n')
+    form.append(webui.Textarea('instructions', value=instructions))
+    form.append('<br>\nWill this quiz be graded?<br>\n')
+    options = (('yes', 'Graded'),
+               ('', 'Ungraded'))
+    form.append(webui.RadioSelection('graded', options))
+    form.append('<br>\n')
+    doc.append(form)
+    return str(doc)
+    

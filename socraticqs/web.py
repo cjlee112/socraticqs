@@ -199,7 +199,9 @@ class Server(object):
         the students on that question.
         At any time you may use the navigation bar
         at the bottom of the page to go to whatever stage
-        you wish.''')
+        you wish.<BR>
+        <BR>
+        Or click here to switch to <A HREF="/quiz_form">Quiz Mode</A>.''')
         doc.add_text(self.admin_nav())
         return str(doc)
 
@@ -242,7 +244,9 @@ class Server(object):
              add_correct='self.question.add_correct',
              analysis='self.question.analysis',
              save_responses='self.save_all_responses',
-             exit='self._exit')
+             exit='self._exit',
+             quiz_form='self._quiz_form',
+             quizmode='self._start_quiz')
     for name,funcstr in d.items(): # create authenticated admin methods
         exec '''%s=lambda self, **kwargs:self.auth_admin(%s, **kwargs)
 %s.exposed = True''' % (name, funcstr, name)
@@ -259,6 +263,19 @@ class Server(object):
             ofile.close()
     aurigma_up.exposed = True
 
+    def _quiz_form(self):
+        return forms.build_quizmode_form()
+
+    def _start_quiz(self, **kwargs):
+        self.start_quiz(**kwargs)
+        return '''Now in quiz mode.  Tell the students to login
+        (or click the START link) to start the quiz.
+        Tell them they can only submit their answers <b>once</b>.
+        When the quiz time is over, and all students have
+        submitted their answers, click
+        <A HREF="/save_responses">here</A> to save their
+        answers to the database.'''
+
     def start_quiz(self, qid=0, title='Quiz',
                    instructions='''Please answer all of the following
                    questions. You must answer all questions.
@@ -269,7 +286,9 @@ class Server(object):
         if graded:
             instructions += ''' <B>This quiz will be graded, and
                    counts for your class grade.</B>'''
-        quiz = QuestionSet(qid, title, instructions, self.courseDB.questions)
+        quiz = QuestionSet(qid, title, instructions,
+                           'no answer', 0,
+                           questions=self.courseDB.questions)
         self.serve_question(quiz)
         return quiz
 
@@ -278,6 +297,8 @@ class Server(object):
         print 'Loaded %d questions' % len(self.courseDB.questions)
 
     def save_all_responses(self):
+        if isinstance(self.question, QuestionSet):
+            return self.question.save_responses()
         n = 0
         for q in self.questions.values():
             n += self.courseDB.save_responses(q)

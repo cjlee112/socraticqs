@@ -950,5 +950,5 @@ class QuestionSet(QuestionBase):
         for q in self.questions:
             n += self.courseDB.save_responses(q)
         return '''Saved %d responses total for %d questions.
-        Click here to go to the <A HREF='/admin'>PIPS console</A>.''' \
+        Click here to go to the <A HREF='/admin'>Socraticqs console</A>.''' \
         % (n, len(self.questions))
