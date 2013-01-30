@@ -67,14 +67,17 @@ def build_reconsider_form(qid, bottom='', title='Reconsidering your answer'):
     doc.add_text(bottom)
     return str(doc)
 
-def build_assess_form(qid, errorModels=(), bottom='', title='Assessing your answer'):
+def build_assess_form(q, errorModels=(), bottom='', title='Assessing your answer'):
     'return HTML for standard form for round 2'
     doc = webui.Document(title)
+    if getattr(q, 'showAnswer', False) and getattr(q, 'explanation', False):
+        doc.add_text('Answer: ' + q.explanation, 'B')
+        doc.add_text('<HR>\n')
     doc.add_text('''How does your answer compare with the right answer?
     If your answer was different, please briefly explain below how your
     reasoning differed.''', 'B')
     form = webui.Form('submit')
-    form.append(webui.Input('qid', 'hidden', str(qid)))
+    form.append(webui.Input('qid', 'hidden', str(q.id)))
     form.append(webui.Input('stage', 'hidden', 'assess'))
     options = (('correct', 'Essentially the same.'),
                ('close', 'Close.'),

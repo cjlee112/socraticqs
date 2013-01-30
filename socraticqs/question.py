@@ -129,7 +129,10 @@ class QuestionBase(object):
             'answer': str(doc),
             'reconsider': forms.build_reconsider_form(questionID,
                                                       self._navHTML),
-            'assess': forms.build_assess_form(questionID, self.errorModels, self._navHTML)
+            'assess': '''Your instructor has not yet started the ASSESS phase.
+            When your instructor asks you to, please click here to
+            <A HREF="%s">ASSESS</A> your answer.%s''' \
+            % (self.get_url('assess'), self._navHTML)
             }
         self._clusterFormHTML = \
             '''No categories have yet been added.
@@ -470,11 +473,17 @@ class QuestionBase(object):
         return str(doc)
 
     def assess_admin(self, showresp=''):
+        if not getattr(self, 'showAnswer', False):
+            self.showAnswer = True
+            self._viewHTML['assess'] = \
+                forms.build_assess_form(self, self.errorModels, self._navHTML)
         doc = webui.Document('Socraticqs Admin')
         doc.add_text(self.title + ' Answer', 'H1')
         if hasattr(self, 'correctAnswer'):
             doc.add_text(str(self.correctAnswer), 'BIG')
             doc.add_text('<HR>\n')
+        doc.add_text(self.explanation, 'B')
+        doc.add_text('<HR>\n')
         if hasattr(self, 'starttime'): # show timer, progress stats
             elapsed = int(time.time() - self.starttime)
             doc.add_text('Time since start: %d:%02d'
