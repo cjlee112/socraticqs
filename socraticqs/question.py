@@ -772,17 +772,19 @@ class QuestionChoice(QuestionBase):
         return self.answer_msg()
 
     def assess(self, uid, assessment=None, errors=(), differences=None, monitor=None):
+        try:
+            response = self.responses[uid]
+        except KeyError:
+            return self._noResponseHTML
         if assessment == 'correct':
-            try:
-                response = self.responses[uid]
-            except KeyError:
-                return self._noResponseHTML
             if response != self.correctAnswer:
                 return '''Since your original answer did not match the correct
                 choice, you must select "Close" or "Different".
                 Please click the Back button in your browser to update
                 your response; please indicate how your answer differed from
                 the correct answer.'''
+        elif response == self.correctAnswer: # student's answer actually right
+            assessment = 'correct' # fix their self-assessment
         return QuestionBase.assess(self, uid, assessment=assessment, 
                                    errors=errors,
                                    differences=differences, monitor=monitor)
