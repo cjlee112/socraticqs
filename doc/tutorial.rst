@@ -139,7 +139,7 @@ Socraticqs Question File Format
 
 You start a Socraticqs session by giving it a list of questions
 in CSV format, consisting of the following columns (again with no 
-header line):
+header line), which must be given in the following order:
 
 * question type
 
@@ -171,7 +171,8 @@ header line):
   the correct answer).  (This is mainly useful for text-response
   questions).
 
-For multiple choice questions, additional columns are required:
+For multiple choice questions, additional columns are required,
+in this order:
 
 * the index of the correct choice, in standard Python zero-based
   indexing (i.e. zero is the first choice; 1 is the second choice, etc.).
