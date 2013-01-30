@@ -160,6 +160,17 @@ header line):
 
 * text answer / explanation
 
+* the number of pre-defined "common error" categories (zero or more,
+  which must immediately follow this column).
+
+* zero or more text columns describing pre-defined "common error" categories;
+  the number of such columns must of course match the previous argument.
+  If any pre-defined error categories are provided, students will be
+  asked on the self-evaluation screen whether they made any of these
+  errors (in addition to asking them whether their answer matched
+  the correct answer).  (This is mainly useful for text-response
+  questions).
+
 For multiple choice questions, additional columns are required:
 
 * the index of the correct choice, in standard Python zero-based
