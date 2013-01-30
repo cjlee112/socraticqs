@@ -314,9 +314,30 @@ data before the Socraticqs server process halts, or you will
 lose the student response data from that session (responses
 previously stored in the database file will still be there, of course).
 
-Socraticqs saves all student responses in an sqlite3 database 
+Socraticqs saves all student responses in an ``sqlite3`` database 
 file (by default ``course.db``).  Currently some rudimentary
-reporting methods are available.  For example, you can see 
+reporting methods are available.
+You can use Socraticqs' report generation script to
+generate a report of the student responses for a specified list
+of questions (assuming you installed ``socraticqs`` using ``setup.py``)::
+
+  socraticqs_report myreport.rst 1,2,3,4
+
+(This writes a report on questions 1, 2, 3, 4 from the ``sqlite3`` database).
+
+Alternatively, you can run the same command directly from the socratiqs
+source directory (i.e. without having to run ``setup.py install``)::
+
+  python /path/to/socraticqs/write_report.py myreport.rst 1,2,3,4
+
+makes it write a report of the responses to questions 1, 2, 3, and 4
+to a `ReStructuredText <http://sphinx.pocoo.org/rest.html>`_ 
+file ``myreport.rst``.  You can use tools like
+`Sphinx <http://sphinx.pocoo.org/>`_ 
+to produce a nicely formatted HTML or LaTeX document from this, etc.
+
+You can also directly query the ``sqlite3`` database.
+For example, you can see 
 a list of all questions in the database using the ``sqlite3``
 tool (installed by default on Mac OS X)::
 
@@ -329,16 +350,6 @@ tool (installed by default on Mac OS X)::
   2|text|repetitive elements and assembly|2012-07-31
   3|text|Solexa vs. PCR?|2012-07-31
   4|text|solexa sequencing limits|2012-07-31
-
-You can then use Socraticqs' ``write_report.py`` script to
-generate a report of the student responses for a specified list
-of questions::
-
-  python /path/to/socraticqs/write_report.py myreport.rst 1,2,3,4
-
-makes it write a report of the responses to questions 1, 2, 3, and 4
-to a `ReStructuredText <http://sphinx.pocoo.org/rest.html>`_ 
-file ``myreport.rst``.
 
  
 Classroom Wi-Fi Configurations

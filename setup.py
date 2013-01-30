@@ -50,6 +50,7 @@ CLASSIFIERS = filter(None, CLASSIFIERS.splitlines())
 entry_points = {
     'console_scripts': [
         'socraticqs_init = socraticqs.coursedb:main',
+        'socraticqs_report = socraticqs.write_report:main',
         'socraticqs = socraticqs.web:main',
         ],
     }
