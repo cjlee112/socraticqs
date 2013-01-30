@@ -89,9 +89,30 @@ Socraticqs requires
 * If you want equation display support, you also need 
   `MathJax <http://www.mathjax.org/>`_
 
-You install Socraticqs by simply downloading and unarchiving it.
-You then run it via commands like::
+You can download the latest release of Socraticqs from
+https://github.com/cjlee112/socraticqs/tags
+(or obtain the very latest development version from the 
+GitHub repository there).  Then untar / unzip the downloaded
+package in the usual way, e.g.::
 
-  python /path/to/socraticqs/web.py myquestions.csv
+  tar xzf socraticqs-v0.3.tar.gz
+
+You have two options for how to install the package:
+
+* option 1: run the standard Python package installation mechanism, e.g.::
+
+    cd socraticqs
+    sudo python setup.py install
+
+  (leave out the ``sudo`` part of the command if you are installing
+  to a location that you have write-privileges for).
+
+  This option has one advantage: it will install ``CherryPy`` for
+  you if you are missing it.
+
+* option 2: simply run socraticqs commands directly from the
+  source code directory, using commands like::
+
+    python /path/to/socraticqs/web.py myquestions.csv
 
 

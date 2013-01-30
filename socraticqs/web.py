@@ -306,24 +306,15 @@ class Server(object):
         s += self.admin_nav()
         return s
         
-def test(title='Monty Hall',
-         text=r'''The probability of winning by switching your choice is:
-         $$x = {-b \pm \sqrt{b^2-4ac} \over 2a}.$$''',
-         choices=('1/3','1/2','2/3', 'Impossible to say'), tryText=True):
-    if tryText:
-        q = QuestionText('monty hall', text, '2/3')
-    else:
-        q = QuestionChoice(title, text, 2, choices)
-    s = PipRoot(True)
-    s.serve_question(q)
-    s.start()
-    return s
 
-if __name__ == '__main__':
+def main():
+    'start socraticqs web server with the specified questions CSV file'
     import sys
     if len(sys.argv) < 2:
         print 'Usage: %s QUESTIONFILE.csv' % sys.argv[0]
     s = Server(sys.argv[1])
     s.serve_forever()
 
-    
+if __name__ == '__main__':
+    main()
+

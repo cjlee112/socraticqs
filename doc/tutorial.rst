@@ -120,7 +120,13 @@ are needed, with no header line, e.g.::
   1082376,"Bob Smith"
   2997389,"Jane Doe"
 
-You initialize the course database by running the following command::
+You initialize the course database by running the following command
+(assuming you installed ``socraticqs`` using ``setup.py``)::
+
+  socraticqs_init students.csv
+
+Alternatively, you can run the same command directly from the socratiqs
+source directory (i.e. without having to run ``setup.py install``)::
 
   python /path/to/socraticqs/coursedb.py students.csv
 
@@ -214,7 +220,13 @@ Starting Socraticqs
 -------------------
 
 You start the Socraticqs server (in a directory containing your
-``course.db`` course database) as follows::
+``course.db`` course database) as follows
+(assuming you installed ``socraticqs`` using ``setup.py``)::
+
+  socraticqs myquestions.csv
+
+Alternatively, you can run the same command directly from the socratiqs
+source directory (i.e. without having to run ``setup.py install``)::
 
   python /path/to/socraticqs/web.py myquestions.csv
 

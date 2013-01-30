@@ -400,8 +400,12 @@ def simple_rst(s, lineStart='\n'):
     return s
 
 
-if __name__ == '__main__':
+def main():
+    'add students to (new) course database'
     import sys
     if len(sys.argv) < 2:
         print 'Usage: %s STUDENTFILE.csv' % sys.argv[0]
     CourseDB(studentFile=sys.argv[1]) # insert students into default DB
+
+if __name__ == '__main__':
+    main()
