@@ -125,7 +125,7 @@ You initialize the course database by running the following command
 
   socraticqs_init students.csv
 
-Alternatively, you can run the same command directly from the socratiqs
+Alternatively, you can run the same command directly from the socraticqs
 source directory (i.e. without having to run ``setup.py install``)::
 
   python /path/to/socraticqs/coursedb.py students.csv
@@ -225,7 +225,7 @@ You start the Socraticqs server (in a directory containing your
 
   socraticqs myquestions.csv
 
-Alternatively, you can run the same command directly from the socratiqs
+Alternatively, you can run the same command directly from the socraticqs
 source directory (i.e. without having to run ``setup.py install``)::
 
   python /path/to/socraticqs/web.py myquestions.csv
@@ -325,7 +325,7 @@ of questions (assuming you installed ``socraticqs`` using ``setup.py``)::
 
 (This writes a report on questions 1, 2, 3, 4 from the ``sqlite3`` database).
 
-Alternatively, you can run the same command directly from the socratiqs
+Alternatively, you can run the same command directly from the socraticqs
 source directory (i.e. without having to run ``setup.py install``)::
 
   python /path/to/socraticqs/write_report.py myreport.rst 1,2,3,4
