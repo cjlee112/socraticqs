@@ -4,6 +4,8 @@ import thread
 import forms
 from coursedb import CourseDB
 from question import QuestionSet
+import warnings
+import os.path
 
 def redirect(path='/', body=None, delay=0):
     'redirect browser, if desired after showing a message'
@@ -19,6 +21,16 @@ class TrivialMonitor(object):
     def message(self, msg):
         print msg
 
+def check_static_path(config, path):
+    'check whether path can be accessed via the CP server config'
+    path = path.split('?')[0] # remove config options from path
+    try:
+        root = config['/']['tools.staticdir.root']
+        l = path.split('/')
+        base = config['/' + l[1]]['tools.staticdir.dir']
+        return os.path.isfile(os.path.join(root, base, *l[2:]))
+    except KeyError:
+        return False
 
 class Server(object):
     '''provides dynamic interfaces for students and instructor.
@@ -26,10 +38,22 @@ class Server(object):
     console thread; the cherrypy server runs using background threads.'''
     def __init__(self, questionFile, enableMathJax=True, registerAll=False,
                  adminIP='127.0.0.1', monitorClass=TrivialMonitor,
-                 mathJaxPath=None, **kwargs):
+                 mathJaxPath='/MathJax/MathJax.js?config=TeX-AMS-MML_HTMLorMML',
+                 configPath='cp.conf', **kwargs):
+        self.app = cherrypy.tree.mount(self, '/', configPath)
+        try:
+            cherrypy.config.update(self.app.config['global'])
+        except KeyError:
+            pass
         self.enableMathJax = enableMathJax
         if enableMathJax:
-            if mathJaxPath is None:
+            if mathJaxPath is not None and \
+               mathJaxPath.startswith('/') and \
+               not check_static_path(self.app.config, mathJaxPath):
+                warnings.warn('''mathJaxPath %s not accessible.  Check config.
+                Falling back to MathJax CDN...''' % mathJaxPath)
+                mathJaxPath = None
+            if mathJaxPath is None: # fallback to MathJax CDN
                 mathJaxPath = 'http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML'
             webui.Document._defaultHeader = '''<script type="text/javascript"
   src="%s">
@@ -59,7 +83,7 @@ class Server(object):
         self.threadID = thread.start_new_thread(self.serve_forever, ())
 
     def serve_forever(self):
-        cherrypy.quickstart(self, '/', 'cp.conf')
+        cherrypy.engine.start()
 
     # student interfaces
     def index(self):
