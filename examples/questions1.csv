@@ -1,0 +1,38 @@
+mc,A SNP Detection Problem,"You are using a microarray to detect single nucleotide polymorphisms
+(SNPs) in samples from multiple people.  For a given site you wish to 
+compare two hypotheses: \(H_1\), a SNP is present in the population
+(i.e. there is genetic variation at this site); \(H_0\), no SNP
+is present.  The microarray gives a fluorescence observation \(X\)
+for a given sample, and you are given likelihoods
+\(p(X|\kappa)\) for the possible number of copies of the variant
+in that sample \(\kappa=0,1,...2N\), where \(N\) is the number
+of people pooled in that sample.  You are also given the two
+models \(p(\kappa|H_1,N), p(\kappa|H_0,N)\), and the prior ratio
+\(p(H_1)/p(H_0)\).  
+
+Given \(X\) measurements for multiple samples as your *obs*, 
+can you compute the posterior odds ratio \(p(H_1|obs)/p(H_0|obs)\)?","Yes, just sum over all possible values of \(\kappa\).
+
+",0,0,"Yes, the data are sufficient. ","No, the \(\kappa\) values are unknown.",It depends.
+text,Summation Equalities,"Assume that a random variable \(B\) has disjoint possible values
+\(\{b_1, \ldots, b_n\}\).
+Which of the following expressions if any are equal?
+
+1. \(\sum_{i=1}^n p(A|B=b_i)\).
+2. \(\sum_{i=1}^n p(A, B=b_i)\).
+3. \(\sum_{i=1}^n p(A|B=b_i)p(B=b_i)\).
+4. \(\sum_{i=1}^n \frac{p(A)}{p(B=b_i)}\).
+5. \(\sum_{i=1}^n p(A)p(B=b_i)\).
+6. \(p(A)\)
+7. \(p(B)\)","2, 3, 5, 6",3,"Beware of summing over the condition of a conditional probability!!
+This is a common error.","Many people realized 2 and 3 were equal, because \(p(A,B)=p(A|B)p(B)\),
+but then didn't see the connection to 5, 6 (\(p(A)\)).  This
+implies they didn't realize that summing over *B* eliminates it from
+the probability expression.
+
+This is a *really* important tool.  It allows you to properly handle
+a hidden variable that links what you know (obs) and what you want
+to know (some other hidden variable).  Just sum over all possible
+values of this ""nuisance variable"" and eliminate it from the equation!!","Some people assumed A,B were independent, contrary to what the question
+asked.
+"
