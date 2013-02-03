@@ -25,18 +25,16 @@ class Server(object):
     Intended to be run from Python console, retaining control via the
     console thread; the cherrypy server runs using background threads.'''
     def __init__(self, questionFile, enableMathJax=True, registerAll=False,
-                 adminIP='127.0.0.1', monitorClass=TrivialMonitor, **kwargs):
+                 adminIP='127.0.0.1', monitorClass=TrivialMonitor,
+                 mathJaxPath=None, **kwargs):
         self.enableMathJax = enableMathJax
         if enableMathJax:
-            webui.Document._defaultHeader = '''<script type="text/x-mathjax-config">
-              MathJax.Hub.Config({
-                tex2jax: {
-                  processEscapes: true
-                }
-              });
-            </script>
-            <script type="text/javascript" src="/MathJax/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
-            '''
+            if mathJaxPath is None:
+                mathJaxPath = 'http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML'
+            webui.Document._defaultHeader = '''<script type="text/javascript"
+  src="%s">
+</script>
+''' % mathJaxPath
         self.adminIP = adminIP
         self.courseDB = CourseDB(questionFile, enableMath=enableMathJax,
                                  **kwargs)
