@@ -40,14 +40,15 @@ class Server(object):
                  adminIP='127.0.0.1', monitorClass=TrivialMonitor,
                  mathJaxPath='/MathJax/MathJax.js?config=TeX-AMS-MML_HTMLorMML',
                  configPath='cp.conf', **kwargs):
-        self.app = cherrypy.tree.mount(self, '/', configPath)
-        try:
-            cherrypy.config.update(self.app.config['global'])
-        except KeyError:
-            pass
+        if configPath:
+            self.app = cherrypy.tree.mount(self, '/', configPath)
+            try:
+                cherrypy.config.update(self.app.config['global'])
+            except KeyError:
+                pass
         self.enableMathJax = enableMathJax
         if enableMathJax:
-            if mathJaxPath is not None and \
+            if configPath and mathJaxPath is not None and \
                mathJaxPath.startswith('/') and \
                not check_static_path(self.app.config, mathJaxPath):
                 warnings.warn('''mathJaxPath %s not accessible.  Check config.
