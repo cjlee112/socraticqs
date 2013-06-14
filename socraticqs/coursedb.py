@@ -27,9 +27,10 @@ class Student(object):
 class CourseDB(object):
     def __init__(self, questionFile=None, studentFile=None,
                  dbfile='course.db', createSchema=False, nmax=1000,
-                 enableMath=False):
+                 enableMath=False, rootPath=''):
         self.dbfile = dbfile
         self.enableMath = enableMath
+        self.rootPath = rootPath
         self.logins = set()
         codes = range(nmax)
         random.shuffle(codes) # short but random unique IDs for students
@@ -88,7 +89,8 @@ class CourseDB(object):
         else:
             self.make_student_dict(c)
         if questionFile:
-            self.load_question_file(questionFile, c=c, conn=conn)
+            self.load_question_file(questionFile, c=c, conn=conn, 
+                                    rootPath=rootPath)
         c.close()
         conn.close()
 
@@ -116,7 +118,8 @@ class CourseDB(object):
             c.execute('insert into students values (?,?,NULL,date(?),"admin")',
                       (uid, fullname, date.today().isoformat()))
 
-    def save_csv_to_db(self, path, func, postfunc=None, c=None, conn=None):
+    def save_csv_to_db(self, path, func, postfunc=None, c=None, conn=None,
+                       **kwargs):
         'generic csv reader, uses func to actually save the rows to db'
         ifile = open(path, 'Ub')
         try:
@@ -128,7 +131,7 @@ class CourseDB(object):
             else:
                 doClose = False
             try:
-                func(rows, c)
+                func(rows, c, **kwargs)
                 conn.commit()
                 if postfunc:
                     postfunc(c)
@@ -209,13 +212,14 @@ class CourseDB(object):
         'read from CSV file to self.questions, and save to database'
         self.save_csv_to_db(path, self.insert_questions, **kwargs)
 
-    def insert_questions(self, questions, c):
+    def insert_questions(self, questions, c, rootPath=''):
         l = []
         for t in questions:
             c.execute('insert into questions values (NULL,?,?,date(?))',
                       (t[0], t[1], date.today().isoformat()))
             klass = questionTypes[t[0]]
-            q = klass(c.lastrowid, enableMath=self.enableMath, *t[1:])
+            q = klass(c.lastrowid, enableMath=self.enableMath, 
+                      rootPath=rootPath, *t[1:])
             q.courseDB = self
             q.errorIDs = []
             for e in q.errorModels:

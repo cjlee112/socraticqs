@@ -4,7 +4,7 @@ def login_form(action='login',
                text='Please login to Socraticqs using your username and Student ID:<br>\n',
                registerText='''<br>
                If you have never logged in, click here to
-               <A HREF="/register_form">register</A>.
+               <A HREF="register_form">register</A>.
                '''):
     doc = webui.Document('Login')
     doc.add_text(text)
@@ -22,7 +22,7 @@ def register_form(action='register',
                   entering your full name and Student ID:<br>\n''',
                   loginText='''<br>
                   If you have already registered, click here to
-                  <A HREF="/login_form">login</A>.
+                  <A HREF="login_form">login</A>.
                   '''):
     doc = webui.Document('Register')
     doc.add_text(text)

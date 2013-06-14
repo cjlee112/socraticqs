@@ -39,7 +39,7 @@ class Server(object):
     def __init__(self, questionFile, enableMathJax=True, registerAll=False,
                  adminIP='127.0.0.1', monitorClass=TrivialMonitor,
                  mathJaxPath='/MathJax/MathJax.js?config=TeX-AMS-MML_HTMLorMML',
-                 configPath='cp.conf', **kwargs):
+                 configPath='cp.conf', rootPath='', **kwargs):
         if configPath:
             self.app = cherrypy.tree.mount(self, '/', configPath)
             try:
@@ -61,12 +61,13 @@ class Server(object):
 </script>
 ''' % mathJaxPath
         self.adminIP = adminIP
+        self.root = rootPath
         self.courseDB = CourseDB(questionFile, enableMath=enableMathJax,
                                  **kwargs)
         self._registerHTML = forms.register_form()
         self.registerAll = registerAll
         self._loginHTML = forms.login_form()
-        self._reloadHTML = redirect()
+        self._reloadHTML = redirect(rootPath + '/index')
         self.questions = {}
         if questionFile:
             self.serve_question(self.courseDB.questions[0])
@@ -118,7 +119,7 @@ class Server(object):
         try:
             self.courseDB.authenticate(uid, username)
         except ValueError, e:
-            return str(e) + ' <A HREF="/">Continue</A>'
+            return str(e) + ' <A HREF="index">Continue</A>'
         self.courseDB.login(uid, username)
         return self._reloadHTML
     login.exposed = True
@@ -133,15 +134,15 @@ class Server(object):
             uid = int(uid)
             uid2 = int(uid2)
         except ValueError:
-            return 'Your UID must be an integer! <A HREF="/register_form">Continue</A>'
+            return 'Your UID must be an integer! <A HREF="register_form">Continue</A>'
         if not username:
-            return 'You must supply a username! <A HREF="/register_form">Continue</A>'
+            return 'You must supply a username! <A HREF="register_form">Continue</A>'
         try:
             msg = self.courseDB.add_student(uid, username, fullname, uid2)
         except ValueError, e:
-            return str(e) + ' <A HREF="/register_form">Continue</A>'
+            return str(e) + ' <A HREF="register_form">Continue</A>'
         self.courseDB.login(uid, username)
-        return msg + '. <A HREF="/">Continue</A>'
+        return msg + '. <A HREF="index">Continue</A>'
     register.exposed = True
 
     def logout(self):
@@ -151,7 +152,7 @@ class Server(object):
         except KeyError:
             s = 'Your session already timed out or you were not logged in.'
         s = 'You are now logged out.'
-        return s + '<br>\nClick here to <A HREF="/">login</A> again.'
+        return s + '<br>\nClick here to <A HREF="index">login</A> again.'
     logout.exposed = True
 
     def reconsider_form(self):
@@ -163,7 +164,7 @@ class Server(object):
             uid = cherrypy.session['UID']
         except KeyError:
             return '''You are not logged in!  Click here to
-            <A HREF="/login">login</A>.'''
+            <A HREF="login">login</A>.'''
         try:
             q = self.questions[int(qid)]
         except (ValueError,KeyError):
@@ -186,7 +187,7 @@ class Server(object):
             uid = cherrypy.session['UID']
         except KeyError:
             return '''You are not logged in!  Click here to
-            <A HREF="/login">login</A>.'''
+            <A HREF="login">login</A>.'''
         try:
             q = self.questions[int(qid)]
         except (ValueError,KeyError):
@@ -215,7 +216,7 @@ class Server(object):
         doc.add_text('%d students logged in.' % len(self.courseDB.logins))
         doc.add_text('Concept Tests', 'h1')
         for i,q in enumerate(self.courseDB.questions):
-            doc.add_text('''<A HREF="/start_question?q=%d"
+            doc.add_text('''<A HREF="start_question?q=%d"
             TITLE="Start the students on this question">%s</A>'''
                          % (i, q.title), 'LI')
         doc.add_text('''<B>Instructions</B>: click on a question to start
@@ -224,17 +225,17 @@ class Server(object):
         at the bottom of the page to go to whatever stage
         you wish.<BR>
         <BR>
-        Or click here to switch to <A HREF="/quiz_form">Quiz Mode</A>.''')
+        Or click here to switch to <A HREF="quiz_form">Quiz Mode</A>.''')
         doc.add_text(self.admin_nav())
         return str(doc)
 
     def admin_nav(self):
         s = '''<HR>
-        <A HREF="/admin" TITLE="Choose a question to start">START</A> &gt
-        <A HREF="/qadmin" TITLE="See student responses to this question">MONITOR</A> &gt
-        <A HREF="/qassess" TITLE="See how many students got the answer right">ASSESS</A> &gt
-        <A HREF="/save_responses" TITLE="Save the latest responses to the database">SAVE</A> &gt
-        [<A HREF="/exit" TITLE="Save and quit">SHUTDOWN</A>]
+        <A HREF="admin" TITLE="Choose a question to start">START</A> &gt
+        <A HREF="qadmin" TITLE="See student responses to this question">MONITOR</A> &gt
+        <A HREF="qassess" TITLE="See how many students got the answer right">ASSESS</A> &gt
+        <A HREF="save_responses" TITLE="Save the latest responses to the database">SAVE</A> &gt
+        [<A HREF="exit" TITLE="Save and quit">SHUTDOWN</A>]
         '''
         return s
 
@@ -248,7 +249,7 @@ class Server(object):
             return self.question.prototype_form(**kwargs)
         return '''Please wait until the students are done with
         round 2, then click here to
-        <A HREF="/prototype_form">view initial results</A>.'''
+        <A HREF="prototype_form">view initial results</A>.'''
 
     def _exit(self):
         s = self.save_all_responses()
@@ -296,7 +297,7 @@ class Server(object):
         Tell them they can only submit their answers <b>once</b>.
         When the quiz time is over, and all students have
         submitted their answers, click
-        <A HREF="/save_responses">here</A> to save their
+        <A HREF="save_responses">here</A> to save their
         answers to the database.'''
 
     def start_quiz(self, qid=0, title='Quiz',

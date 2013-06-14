@@ -101,6 +101,11 @@ class QuestionBase(object):
         nerror = int(nerror)
         self.errorModels = args[:nerror]
         args = args[nerror:] # skip past error models
+        try:
+            self.rootPath = kwargs['rootPath']
+            del kwargs['rootPath']
+        except KeyError:
+            self.rootPath = ''
         self.refresh = 15
         self.categories = {}
         for attr in ('hasReasons', 'isClustered', 'noMatch', 'hasFinalVote',
@@ -170,14 +175,14 @@ class QuestionBase(object):
 
     # student interfaces
     def get_url(self, stage, action='view'):
-        return '/%s?qid=%d&stage=%s' % (action, self.id, stage)
+        return '%s?qid=%d&stage=%s' % (action, self.id, stage)
 
     def nav_html(self, cluster=True):
         s = '''<HR>
-        <A HREF="/" TITLE="Answer the current question">START</A> &gt
+        <A HREF="index" TITLE="Answer the current question">START</A> &gt
         <A HREF="%s" TITLE="Report whether discussion changed your mind">DISCUSS</A> &gt
         <A HREF="%s" TITLE="Report how your answer compared with the correct solution">ASSESS</A> &gt
-        [<A HREF="/logout">LOGOUT</A>]
+        [<A HREF="logout">LOGOUT</A>]
         ''' % (self.get_url('reconsider'), self.get_url('assess'))
         return s
 
@@ -235,7 +240,7 @@ class QuestionBase(object):
             self.noMatch.add(uid)
         self.cluster_monitor(monitor)
         return '''Thanks! When your instructor asks you to, please click here to
-        <A HREF="/">continue</A>.''' + self._navHTML
+        <A HREF="index">continue</A>.\n%s''' % self._navHTML
 
     def cluster_form(self, uid):
         try:
@@ -417,7 +422,7 @@ class QuestionBase(object):
                             % (len(self.hasCritique), len(self.responses)))
         ## self.alert_if_done()
         return '''Thanks! When your instructor asks you to, please click here to
-        <A HREF="/">continue</A>.''' + self._navHTML
+        <A HREF="index">continue</A>.\n%s''' % self._navHTML
 
     # instructor interfaces
     def start_admin(self, starttimer=0, showresp=''):
@@ -438,9 +443,9 @@ class QuestionBase(object):
                              'Pretty sure', '(not yet)', ))
             doc.append(t)
             if showresp:
-                doc.add_text('<BR>\n(<A HREF="/qadmin">hide answers</A>)<BR>\n')
+                doc.add_text('<BR>\n(<A HREF="qadmin">hide answers</A>)<BR>\n')
             else:
-                doc.add_text('<BR>\n(<A HREF="/qadmin?showresp=1">show answers</A>)<BR>\n')
+                doc.add_text('<BR>\n(<A HREF="qadmin?showresp=1">show answers</A>)<BR>\n')
             counts = [0, 0, 0]
             for r in self.responses.values():
                 if showresp:
@@ -458,15 +463,15 @@ class QuestionBase(object):
             students self-assess.
             Note: you may use the navigation bar below to
             jump forward to another stage or question at any time.''')
-            doc.head.append('<meta http-equiv="Refresh" content="%d; url=%s?showresp=%s">\n'
-                            % (self.refresh, '/qadmin', showresp))
+            doc.head.append('<meta http-equiv="Refresh" content="%d; url=qadmin?showresp=%s">\n'
+                            % (self.refresh, showresp))
         else: # show instructions, GO button
             doc.add_text('''<B>Instructions</B>: present the question to the
             students.  When you tell them to start, click the Go button
             to begin the timer.
             For a concept test, typically give them a minute to think
             about the question, and a minute or two to enter an answer.''')
-            form = webui.Form('/qadmin')
+            form = webui.Form('qadmin')
             form.append(webui.Input('starttimer', 'hidden', '1'))
             doc.append(form)
         doc.add_text(self.server.admin_nav())
@@ -495,9 +500,9 @@ class QuestionBase(object):
                              'Correct', '(not yet)', ))
             doc.append(t)
             if showresp:
-                doc.add_text('<BR>\n(<A HREF="/qassess">hide self-assessments</A>)<BR>\n')
+                doc.add_text('<BR>\n(<A HREF="qassess">hide self-assessments</A>)<BR>\n')
             else:
-                doc.add_text('<BR>\n(<A HREF="/qassess?showresp=1">show self-assessments</A>)<BR>\n')
+                doc.add_text('<BR>\n(<A HREF="qassess?showresp=1">show self-assessments</A>)<BR>\n')
             counts = {}
             for r in self.responses.values():
                 if showresp and getattr(r, 'criticisms', False):
@@ -514,8 +519,8 @@ class QuestionBase(object):
             and ask them to click ASSESS to enter their self-assessment.
             Note: you may click START below to
             jump forward to another question at any time.''')
-            doc.head.append('<meta http-equiv="Refresh" content="%d; url=%s?showresp=%s">\n'
-                            % (self.refresh, '/qassess', showresp))
+            doc.head.append('<meta http-equiv="Refresh" content="%d; url=qassess?showresp=%s">\n'
+                            % (self.refresh, showresp))
         doc.add_text(self.server.admin_nav())
         return str(doc)
 
@@ -530,7 +535,7 @@ class QuestionBase(object):
         individual responses as distinct categories of answers, and
         then ask the students to assign themselves to these categories.
         However, this is purely <B>optional</B>.
-        Click here to <A HREF="/prototype_form">UPDATE</A> for the
+        Click here to <A HREF="prototype_form">UPDATE</A> for the
         latest results.''')
         if self.categories: # not empty
             doc.add_text('%d Categories' % len(self.categories), 'h1')
@@ -558,13 +563,13 @@ class QuestionBase(object):
                                              (('add', str(r)),)))
         doc.append(form)
         if offset > 0:
-            doc.add_text('<A HREF="/prototype_form?offset=%d&maxview=%d">[Previous %d]</A>\n'
+            doc.add_text('<A HREF="prototype_form?offset=%d&maxview=%d">[Previous %d]</A>\n'
                          % (max(0, offset - maxview), maxview, maxview))
         if maxview and unclustered > offset + maxview:
-            doc.add_text('<A HREF="/prototype_form?offset=%d&maxview=%d">[Next %d]</A>\n'
+            doc.add_text('<A HREF="prototype_form?offset=%d&maxview=%d">[Next %d]</A>\n'
                          % (offset + maxview, maxview, maxview))
         doc.add_text('''<br>If you want to "declare victory", click here to
-        proceed to the <A HREF="/cluster_report">cluster report</A>.''')
+        proceed to the <A HREF="cluster_report">cluster report</A>.''')
         doc.add_text(self.server.admin_nav())
         return str(doc)
 
@@ -583,7 +588,7 @@ class QuestionBase(object):
                 yield r
 
     _gotoVoteHTML = '''Tell the students to proceed with their vote.
-    Finally, click here to <A HREF="/analysis">analyze the results</A>.'''
+    Finally, click here to <A HREF="analysis">analyze the results</A>.'''
 
     def cluster_report(self):
         fmt = '%(answer)s<br><b>(%(tag)s answer chosen by %(n)d students)</b>'
@@ -598,7 +603,7 @@ class QuestionBase(object):
             doc.append(self.get_choice_form('correct', False, 0, fmt,
                                             useSubmit=False))
             doc.add_text('''<br>If none of these are correct, click here
-            to add the <A HREF="/add_correct">correct answer</A>
+            to add the <A HREF="add_correct">correct answer</A>
             given by the instructor.''')
         else:
             doc.add_text('%2.0f%% of students got the correct answer<hr>' % p)
@@ -626,7 +631,7 @@ class QuestionBase(object):
         self.noMatch.clear()
         s = '''Added %d categories.  Tell the students to categorize
         themselves vs. your new categories.  When they are done,
-        click here to <A HREF="/prototype_form">continue</A>.\n''' % n
+        click here to <A HREF="prototype_form">continue</A>.\n''' % n
         s += self.server.admin_nav()
         return s
 
@@ -682,7 +687,7 @@ class QuestionBase(object):
         doc.add_text('''<B>Instructions</B>: This table shows the
         fraction of students that got the correct answer,
         or gave no response (NR).  Uncategorized responses are not
-        shown.  Click here to <A HREF="/analysis">UPDATE</A> for the
+        shown.  Click here to <A HREF="analysis">UPDATE</A> for the
         latest results.''')
         d1, d2, d3 = self.count_rounds()
         t = webui.Table('%d Responses' % len(self.responses),
@@ -721,7 +726,7 @@ class QuestionBase(object):
     def save_responses(self):
         n = self.courseDB.save_responses(self)
         return '''Saved %d responses.  Click here to go to the
-        <A HREF='/admin'>PIPS console</A>.''' % n
+        <A HREF='admin'>Socraticqs instructor console</A>.''' % n
 
     ## def alert_if_done(self, initial=False):
     ##     self.answered.add(cherrypy.session['UID'])
@@ -935,7 +940,7 @@ class QuestionSet(QuestionBase):
             return '''Sorry, I have already recorded a previous set of
             answers from you.  You cannot resubmit a new set of answers.
             When your instructor asks you to, please click here to
-        <A HREF="/">continue</A>.'''
+        <A HREF="index">continue</A>.'''
         d = {}
         for attr in kwargs: # sort arguments for each question
             i = int(attr.split('_')[-1])
@@ -953,7 +958,7 @@ class QuestionSet(QuestionBase):
             monitor.message('answers: %d / %d' % (len(self.qsAnswered),
                                                   len(self.courseDB.logins)))
         return '''Thanks for answering! When your instructor asks you to, please click here to
-        <A HREF="/">continue</A>.'''
+        <A HREF="index">continue</A>.'''
     answer.exposed = True
             
     def save_responses(self):
@@ -961,5 +966,5 @@ class QuestionSet(QuestionBase):
         for q in self.questions:
             n += self.courseDB.save_responses(q)
         return '''Saved %d responses total for %d questions.
-        Click here to go to the <A HREF='/admin'>Socraticqs console</A>.''' \
+        Click here to go to the <A HREF='admin'>Socraticqs console</A>.''' \
         % (n, len(self.questions))
