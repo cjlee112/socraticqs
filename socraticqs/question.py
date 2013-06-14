@@ -223,8 +223,7 @@ class QuestionBase(object):
         return self.answer_msg()
 
     def assess(self, uid, assessment=None, errors=(), differences=None, monitor=None):
-        if not assessment or (assessment != 'correct' and not differences
-                              and not errors):
+        if not assessment:
             return _missing_arg_msg
         try:
             response = self.responses[uid]
