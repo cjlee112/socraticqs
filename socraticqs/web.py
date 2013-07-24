@@ -39,7 +39,8 @@ class Server(object):
     def __init__(self, questionFile, enableMathJax=True, registerAll=False,
                  adminIP='127.0.0.1', monitorClass=TrivialMonitor,
                  mathJaxPath='/MathJax/MathJax.js?config=TeX-AMS-MML_HTMLorMML',
-                 configPath='cp.conf', rootPath='', **kwargs):
+                 configPath='cp.conf', rootPath='', 
+                 shutdownFunc=None, **kwargs):
         if configPath:
             self.app = cherrypy.tree.mount(self, '/', configPath)
             try:
@@ -62,6 +63,7 @@ class Server(object):
 ''' % mathJaxPath
         self.adminIP = adminIP
         self.root = rootPath
+        self.shutdownFunc = shutdownFunc
         self.courseDB = CourseDB(questionFile, enableMath=enableMathJax,
                                  **kwargs)
         self._registerHTML = forms.register_form()
@@ -253,8 +255,11 @@ class Server(object):
 
     def _exit(self):
         s = self.save_all_responses()
-        print s
-        raise SystemExit(0)
+        if self.shutdownFunc:
+            return self.shutdownFunc(self, s)
+        else:
+            cherrypy.engine.exit() # graceful exit after request(s) done
+        return s
 
     d = dict(admin='self._admin_page',
              start_question='self._start_question',
