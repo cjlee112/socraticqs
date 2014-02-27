@@ -84,7 +84,7 @@ def build_assess_form(q, errorModels=(), bottom='', title='Assessing your answer
                ('different', 'Different.'))
     form.append(webui.RadioSelection('assessment', options))
     if errorModels:
-        form.append("<br>\nDid you make any of the following common errors?<br>\n")
+        form.append("<br>\n<b>Did you make any of the following common errors?</b><br>\n")
         form.append(webui.CheckboxSelection('errors', list(enumerate(errorModels))))
     form.append('''<br>\nIf you made an error not listed above, please
 indicate how your reasoning differed from the right idea.  
