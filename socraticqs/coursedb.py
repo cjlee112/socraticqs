@@ -278,6 +278,9 @@ class CourseDB(object):
         conn = sqlite3.connect(self.dbfile)
         c = conn.cursor()
         try:
+            if not qlist:
+                c.execute('select distinct(question_id) from responses')
+                qlist = [t[0] for t in c.fetchall()]
             for qid in qlist:
                 c.execute('select qtype, title from questions where id=?',
                           (qid,))
@@ -307,10 +310,11 @@ class CourseDB(object):
         error_models = {}
         for errorID,belief in c.fetchall():
             error_models[errorID] = belief
-        c.execute('select uid, answer, confidence, reasons from responses where question_id=?',
+        c.execute('select uid, answer, confidence, reasons, criticisms from responses where question_id=?',
                   (qid,))
         responses = c.fetchall()
         n = float(len(responses))
+        nerror = len([t for t in responses if t[3] != 'correct'])
         statuses, confidences, breakdown = self.response_stats(responses, n)
         print >>ifile, '\n' + title + '\n' + ('-' * len(title)) + '\n\n'
         print >>ifile, '%d Students:' % len(responses)
@@ -322,12 +326,20 @@ class CourseDB(object):
         for nerr, errorID in commonErrors:
             print >>ifile, '* %.0f%%: ' % (100 * nerr / n), 
             print >>ifile, simple_rst(error_models[errorID], '\n  ') + '\n'
+        if len(classifiedErrors) >= nerror: # no unclassified errors
+            return
         print >>ifile, 'Unclassified Errors\n......................\n'
         for status in ('different', 'close'):
-            print >>ifile, '\n%s\n++++++++++++\n' % status
-            for uid, answer, confidence, reasons in responses:
+            first = True
+            for uid, answer, confidence, reasons, criticisms in responses:
                 if reasons == status and uid not in classifiedErrors:
+                    if first:
+                        print >>ifile, '\n%s\n++++++++++++\n' % status
+                        first = False
                     print >>ifile, '* ' + simple_rst(answer, '\n  ')
+                    if criticisms and criticisms.strip():
+                        print >>ifile, '  **Difference**: ' + \
+                            simple_rst(criticisms, '\n  ')
 
     def response_stats(self, responses, n):
         'break down responses by confidence and correctness, and both'
