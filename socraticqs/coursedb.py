@@ -286,11 +286,66 @@ class CourseDB(object):
                     self.question_report(ifile, qid, c, qtitle, 'answer',
                                          multipleChoice=True, **kwargs)
                 else:
-                    self.question_report(ifile, qid, c, qtitle, **kwargs)
+                    self.basic_report(ifile, qid, c, qtitle, **kwargs)
         finally:
             c.close()
             conn.close()
             ifile.close()
+    def basic_report(self, ifile, qid, c, title, 
+                     confNames=('just guessing', 'not sure', 'pretty sure')):
+        'report stats, known error models, and unclassified errors'
+        c.execute('select t1.error_id,t1.uid from student_errors t1, error_models t2 where t2.question_id=? and t1.error_id=t2.id',
+                  (qid,))
+        student_errors = c.fetchall()
+        classifiedErrors = frozenset([t[1] for t in student_errors])
+        commonErrors = frozenset([t[0] for t in student_errors])
+        commonErrors = [(len([t for t in student_errors if t[0] == errorID]), 
+                         errorID) for errorID in commonErrors]
+        commonErrors.sort(reverse=True)
+        c.execute('select id,belief from error_models where question_id=?',
+                  (qid,))
+        error_models = {}
+        for errorID,belief in c.fetchall():
+            error_models[errorID] = belief
+        c.execute('select uid, answer, confidence, reasons from responses where question_id=?',
+                  (qid,))
+        responses = c.fetchall()
+        n = float(len(responses))
+        statuses, confidences, breakdown = self.response_stats(responses, n)
+        print >>ifile, '\n' + title + '\n' + ('-' * len(title)) + '\n\n'
+        print >>ifile, '%d Students:' % len(responses)
+        l = ['%.0f%% %s' % (100 * t[1], t[0]) for t in statuses]
+        print >>ifile, ', '.join(l) + '\n'
+        l = ['%.0f%% %s' % (100 * t[1], confNames[t[0]]) for t in confidences]
+        print >>ifile, 'Confidence: ' + ', '.join(l) + '\n'
+        print >>ifile, 'Known Error Models\n......................\n'
+        for nerr, errorID in commonErrors:
+            print >>ifile, '* %.0f%%: ' % (100 * nerr / n), 
+            print >>ifile, simple_rst(error_models[errorID], '\n  ') + '\n'
+        print >>ifile, 'Unclassified Errors\n......................\n'
+        for status in ('different', 'close'):
+            print >>ifile, '\n%s\n++++++++++++\n' % status
+            for uid, answer, confidence, reasons in responses:
+                if reasons == status and uid not in classifiedErrors:
+                    print >>ifile, '* ' + simple_rst(answer, '\n  ')
+
+    def response_stats(self, responses, n):
+        'break down responses by confidence and correctness, and both'
+        statuses = []
+        breakdown = []
+        for status in ('different', 'close', 'correct'):
+            l = []
+            statuses.append((status, len([t for t in responses
+                                          if t[3] == status]) / n))
+            for conf in range(3):
+                l.append((conf, len([t for t in responses
+                                     if t[2] == conf and t[3] == status]) / n))
+            breakdown.append((status, l))
+        confidences = []
+        for conf in range(3):
+            confidences.append((conf, len([t for t in responses
+                                           if t[2] ==  conf]) / n))
+        return statuses, confidences, breakdown
     def question_report(self, ifile, qid, c, title, orderBy='cluster_id',
                         showReasons=False, multipleChoice=False,
                         correctOnly=True):
