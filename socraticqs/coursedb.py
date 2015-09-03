@@ -18,6 +18,14 @@ class BadUIDError(ValueError):
 class BadUsernameError(ValueError):
     pass
 
+class DBConnection(object):
+    def __init__(self, dbfile='course.db'):
+        self.conn = sqlite3.connect(dbfile)
+        self.c = self.conn.cursor()
+    def close(self):
+        self.c.close()
+        self.conn.close()
+
 class Student(object):
     def __init__(self, uid, fullname, username=None):
         self.uid = uid
@@ -25,6 +33,44 @@ class Student(object):
         self.username = username
 
 class CourseDB(object):
+    _questionSchema = (
+        'question_id',
+        'qtype',
+        'title',
+        'date_added',
+    )
+    _responseSchema = (
+        'response_id',
+        'uid',
+        'question_id',
+        'cluster_id',
+        'is_correct',
+        'answer',
+        'attach_path',
+        'confidence',
+        'submit_time',
+        'reasons',
+        'switched_id',
+        'confidence2',
+        'final_id',
+        'final_conf',
+        'critique_id',
+        'criticisms',
+    )
+    _errorSchema = (
+        'error_id',
+        'question_id',
+        'belief',
+        'title',
+        'date_added',
+    )
+    _studentErrorSchema = (
+        'error_id',
+        'uid',
+        'argument',
+        'confidence',
+        'submit_time',
+    )
     def __init__(self, questionFile=None, studentFile=None,
                  dbfile='course.db', createSchema=False, nmax=1000,
                  enableMath=False, rootPath=''):
